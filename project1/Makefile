@@ -4,6 +4,6 @@ compile : pingSpoof.c
 push : 
 	git status
 	git add .
-	git commit -m MESSAGE
+	git commit -m MSG
 	git push
 
