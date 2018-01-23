@@ -9,6 +9,9 @@ int main(int args, char** argv) {
       return 1;
    }
 
+   printf("MAC = %s\n", argv[1]);
+   printf("IP = %s\n", argv[2]);
+
    char *dev, errbuf[PCAP_ERRBUF_SIZE];
    bpf_u_int32 mask;
    bpf_u_int32 net;
@@ -52,7 +55,8 @@ int main(int args, char** argv) {
    //const u_char *packet;
    //struct pcap_pkthdr header;
 
-   int err = pcap_loop(handle, 1, analyzePacket, NULL);
+
+   int err = pcap_loop(handle, 1000, analyzePacket, (unsigned char *) argv[2]);
 
    if (err != 0) {
       fprintf(stderr, "%s\n", "Error on pcap_loop");

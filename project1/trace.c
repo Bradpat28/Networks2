@@ -33,6 +33,9 @@ void analyzePacket(unsigned char *pcap, const struct pcap_pkthdr *header,
       const unsigned char *packet) {
    int i = 0;
    ethernetInfo *ethernet = (ethernetInfo *) (packet);
+   
+   printf("%s\n", pcap);
+
    printf("Packet Len: %d\n\n", header->len); 
    printf("\tEthernet Header\n");
 
@@ -48,7 +51,7 @@ void analyzePacket(unsigned char *pcap, const struct pcap_pkthdr *header,
    printf("\n");
    if (ethernet->ether_type == ETHER_ARP_TYPE) {
       printf("\t\tType: ARP\n\n");
-      analyzeARP(packet + ETHER_HEADER_SIZE);
+      analyzeARP(packet + ETHER_HEADER_SIZE, (char *) pcap);
    }
    else if (ethernet->ether_type == ETHER_IP_TYPE) {
       printf("\t\tType: IP\n\n");
@@ -60,41 +63,78 @@ void analyzePacket(unsigned char *pcap, const struct pcap_pkthdr *header,
    printf("\n");
 }
 
-void analyzeARP(const unsigned char *packet) {
+void analyzeARP(const unsigned char *packet, char *ipAddr) {
    arpInfo *arp = (arpInfo *) (packet);
    int i = 0;
+   //unsigned char mac[6];
+   //unsigned char ip[4];
+   //char buffer[100];
+   //char *buf;
+   //int count = 0;
+   
+   printf("%s\n", ipAddr);
+   printf("%d\n", (int)strlen(ipAddr));
+   
+   //memset(buffer, 0, 100);
+   //memcpy(ipAddr, buffer, strlen(ipAddr) * sizeof(char));
+   
+  // buf = strtok(buffer, ".");
+   //sscanf(macAddr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
 
    printf("\tARP header\n");
-   
-   if (ntohs(arp->opcode) == ARP_REQUEST) {
-      printf("\t\tOpcode: Request\n");
-   }
-   else if (ntohs(arp->opcode) == ARP_REPLY) {
-      printf("\t\tOpcode: Reply\n");
-   }
-   else {
-      fprintf(stderr, "INVALID ARP CODE\n");
-   }
-   printf("\t\tSender MAC: %x", arp->mac_sender_addr[0]);
+   //printf("\t ADDR 1 = %s\n", macAddr);
+   //printf("\t ADDR 3 = %s\n", mac);
+
+   /*printf("\t\tSender MAC: %x", mac[0]);
    for (i = 1; i < ETHER_ADDR_LEN; i++) {
-      printf(":%x", arp->mac_sender_addr[i]);
-   }
-   printf("\n");
+      printf(":%x", mac[i]);
+   } */ 
+   
+   //while (buf != NULL) {
+   //   ip[count] = (unsigned char)atoi(buf);
+   //   count++;
+   //   buf = strtok(NULL, ".");
+   //}
    printf("\t\tSender IP: %d", arp->ip_sender_addr[0]);
    for (i = 1; i < IP_ADDR_LEN; i++) {
       printf(".%d", arp->ip_sender_addr[i]);
    }
-   printf("\n");  
-   printf("\t\tTarget MAC: %x", arp->mac_dest_addr[0]);
-   for (i = 1; i < ETHER_ADDR_LEN; i++) {
-      printf(":%x", arp->mac_dest_addr[i]);
-   }
-   printf("\n");
-   printf("\t\tTarget IP: %d", arp->ip_dest_addr[0]);
+    
+   /*printf("\t\tSender IP: %d", ip[0]);
    for (i = 1; i < IP_ADDR_LEN; i++) {
-      printf(".%d", arp->ip_dest_addr[i]);
+      printf(".%d", ip[i]);
+   }*/
+   if (0) {
+      if (ntohs(arp->opcode) == ARP_REQUEST) {
+         printf("\t\tOpcode: Request\n");
+      }
+      else if (ntohs(arp->opcode) == ARP_REPLY) {
+         printf("\t\tOpcode: Reply\n");
+      }
+      else {
+         fprintf(stderr, "INVALID ARP CODE\n");
+      }
+      printf("\t\tSender MAC: %x", arp->mac_sender_addr[0]);
+      for (i = 1; i < ETHER_ADDR_LEN; i++) {
+         printf(":%x", arp->mac_sender_addr[i]);
+      }
+      printf("\n");
+      printf("\t\tSender IP: %d", arp->ip_sender_addr[0]);
+      for (i = 1; i < IP_ADDR_LEN; i++) {
+         printf(".%d", arp->ip_sender_addr[i]);
+      }
+      printf("\n");  
+      printf("\t\tTarget MAC: %x", arp->mac_dest_addr[0]);
+      for (i = 1; i < ETHER_ADDR_LEN; i++) {
+         printf(":%x", arp->mac_dest_addr[i]);
+      }
+      printf("\n");
+      printf("\t\tTarget IP: %d", arp->ip_dest_addr[0]);
+      for (i = 1; i < IP_ADDR_LEN; i++) {
+         printf(".%d", arp->ip_dest_addr[i]);
+      }
+      printf("\n");
    }
-   printf("\n");
 }
 
 void analyzeIP(const unsigned char *packet) {

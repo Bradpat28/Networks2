@@ -87,7 +87,7 @@ typedef struct udpInfo {
 
 void analyzePacket(unsigned char *pcap, const struct pcap_pkthdr *header,
       const unsigned char *packet);
-void analyzeARP(const unsigned char *packet);
+void analyzeARP(const unsigned char *packet, char *ipAddr);
 void analyzeIP(const unsigned char *packet);
 void analyzeICMP(const unsigned char *packet);
 void analyzeTCP(const unsigned char *packet, ipInfo *ip);
