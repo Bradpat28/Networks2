@@ -1,42 +1,9 @@
 #include "trace.h"
 
-/*int main(int args, char **argv) {
-   char errBuf[PCAP_ERRBUF_SIZE];
-   int totalPacketCount = 0;
-   struct pcap_pkthdr header;
-   const unsigned char *packet;
-
-   if (args > 2 || args <= 1) {
-      fprintf(stderr, "Need to specify a file\n");
-      exit(-1);
-   }
-
-   //Opens a pcap object to navigate the pcap file
-   pcap_t *pcap = pcap_open_offline(argv[1], errBuf);
-
-   if (pcap == NULL) {
-      fprintf(stderr, "pcap_open_offline failed to open\n");
-      exit(-1);
-   }
-
-   //Gets the next packet from the pcap file; 
-   while ((packet = pcap_next(pcap, &header)) != NULL) {
-      totalPacketCount++; 
-      printf("Packet number: %d  ", totalPacketCount);
-      
-      analyzePacket(pcap, &header, packet);
-   }
-   return 0;
-}*/
-
-void analyzePacket(unsigned char *pcap, const struct pcap_pkthdr *header,
-      const unsigned char *packet) {
+void analyzePacket(pcap_t *pcap, const struct pcap_pkthdr *header, unsigned char *packet) {
    int i = 0;
    ethernetInfo *ethernet = (ethernetInfo *) (packet);
-   
-   printf("%s\n", pcap);
-
-   printf("Packet Len: %d\n\n", header->len); 
+   printf("Packet Len: %d\n\n", header->len);
    printf("\tEthernet Header\n");
 
    printf("\t\tDest MAC: %x", ethernet->mac_dest_host[0]);
@@ -51,7 +18,7 @@ void analyzePacket(unsigned char *pcap, const struct pcap_pkthdr *header,
    printf("\n");
    if (ethernet->ether_type == ETHER_ARP_TYPE) {
       printf("\t\tType: ARP\n\n");
-      analyzeARP(packet + ETHER_HEADER_SIZE, (char *) pcap);
+      analyzeARP(packet + ETHER_HEADER_SIZE);
    }
    else if (ethernet->ether_type == ETHER_IP_TYPE) {
       printf("\t\tType: IP\n\n");
@@ -59,91 +26,54 @@ void analyzePacket(unsigned char *pcap, const struct pcap_pkthdr *header,
    }
    else {
       fprintf(stderr, "UNKNOWN TYPE\n");
-   } 
+   }
    printf("\n");
 }
 
-void analyzeARP(const unsigned char *packet, char *ipAddr) {
+void analyzeARP(unsigned char *packet) {
    arpInfo *arp = (arpInfo *) (packet);
    int i = 0;
-   //unsigned char mac[6];
-   //unsigned char ip[4];
-   //char buffer[100];
-   //char *buf;
-   //int count = 0;
-   
-   printf("%s\n", ipAddr);
-   printf("%d\n", (int)strlen(ipAddr));
-   
-   //memset(buffer, 0, 100);
-   //memcpy(ipAddr, buffer, strlen(ipAddr) * sizeof(char));
-   
-  // buf = strtok(buffer, ".");
-   //sscanf(macAddr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
 
    printf("\tARP header\n");
-   //printf("\t ADDR 1 = %s\n", macAddr);
-   //printf("\t ADDR 3 = %s\n", mac);
 
-   /*printf("\t\tSender MAC: %x", mac[0]);
+   if (ntohs(arp->opcode) == ARP_REQUEST) {
+      printf("\t\tOpcode: Request\n");
+   }
+   else if (ntohs(arp->opcode) == ARP_REPLY) {
+      printf("\t\tOpcode: Reply\n");
+   }
+   else {
+      fprintf(stderr, "INVALID ARP CODE\n");
+   }
+   printf("\t\tSender MAC: %x", arp->mac_sender_addr[0]);
    for (i = 1; i < ETHER_ADDR_LEN; i++) {
-      printf(":%x", mac[i]);
-   } */ 
-   
-   //while (buf != NULL) {
-   //   ip[count] = (unsigned char)atoi(buf);
-   //   count++;
-   //   buf = strtok(NULL, ".");
-   //}
+      printf(":%x", arp->mac_sender_addr[i]);
+   }
+   printf("\n");
    printf("\t\tSender IP: %d", arp->ip_sender_addr[0]);
    for (i = 1; i < IP_ADDR_LEN; i++) {
       printf(".%d", arp->ip_sender_addr[i]);
    }
-    
-   /*printf("\t\tSender IP: %d", ip[0]);
-   for (i = 1; i < IP_ADDR_LEN; i++) {
-      printf(".%d", ip[i]);
-   }*/
-   if (0) {
-      if (ntohs(arp->opcode) == ARP_REQUEST) {
-         printf("\t\tOpcode: Request\n");
-      }
-      else if (ntohs(arp->opcode) == ARP_REPLY) {
-         printf("\t\tOpcode: Reply\n");
-      }
-      else {
-         fprintf(stderr, "INVALID ARP CODE\n");
-      }
-      printf("\t\tSender MAC: %x", arp->mac_sender_addr[0]);
-      for (i = 1; i < ETHER_ADDR_LEN; i++) {
-         printf(":%x", arp->mac_sender_addr[i]);
-      }
-      printf("\n");
-      printf("\t\tSender IP: %d", arp->ip_sender_addr[0]);
-      for (i = 1; i < IP_ADDR_LEN; i++) {
-         printf(".%d", arp->ip_sender_addr[i]);
-      }
-      printf("\n");  
-      printf("\t\tTarget MAC: %x", arp->mac_dest_addr[0]);
-      for (i = 1; i < ETHER_ADDR_LEN; i++) {
-         printf(":%x", arp->mac_dest_addr[i]);
-      }
-      printf("\n");
-      printf("\t\tTarget IP: %d", arp->ip_dest_addr[0]);
-      for (i = 1; i < IP_ADDR_LEN; i++) {
-         printf(".%d", arp->ip_dest_addr[i]);
-      }
-      printf("\n");
+   printf("\n");
+   printf("\t\tTarget MAC: %x", arp->mac_dest_addr[0]);
+   for (i = 1; i < ETHER_ADDR_LEN; i++) {
+      printf(":%x", arp->mac_dest_addr[i]);
    }
+   printf("\n");
+   printf("\t\tTarget IP: %d", arp->ip_dest_addr[0]);
+   for (i = 1; i < IP_ADDR_LEN; i++) {
+      printf(".%d", arp->ip_dest_addr[i]);
+   }
+   printf("\n");
 }
 
-void analyzeIP(const unsigned char *packet) {
+void analyzeIP(unsigned char *packet) {
    ipInfo *ip = (ipInfo *) (packet);
    int i = 0;
    int protocol = 0;
    tcpPseudoHeader *tcp_pseudo;
    tcp_pseudo = (tcpPseudoHeader *) calloc(1,sizeof(tcpPseudoHeader));
-   
+
    printf("\tIP Header\n");
    printf("\t\tIP Version: %d\n", ip->ip_version>>4);
    printf("\t\tHeader Len (bytes): %d\n", (ip->ip_version & 0x0f) * 4);
@@ -151,10 +81,10 @@ void analyzeIP(const unsigned char *packet) {
    printf("\t\t\tDiffserv bits: %d\n", ip->ip_type>>2);
    printf("\t\t\tECN bits: %d\n", ip->ip_type & 0x03);
    printf("\t\tTTL: %d\n", ip->ip_time_live);
-   
+
    printf("\t\tProtocol: ");
    if (ip->ip_proto == 1) {
-      printf("ICMP\n");   
+      printf("ICMP\n");
       protocol = ICMP;
    }
    else if (ip->ip_proto == 6) {
@@ -183,14 +113,14 @@ void analyzeIP(const unsigned char *packet) {
       printf(".%d", ip->ip_src_addr[i]);
       tcp_pseudo->ip_src_addr[i] = ip->ip_src_addr[0];
    }
-   printf("\n"); 
+   printf("\n");
    printf("\t\tDest IP: %d", ip->ip_dest_addr[0]);
    tcp_pseudo->ip_dest_addr[0] = ip->ip_dest_addr[0];
    for (i = 1; i < IP_ADDR_LEN; i++) {
       tcp_pseudo->ip_dest_addr[i] = ip->ip_dest_addr[i];
       printf(".%d", ip->ip_dest_addr[i]);
    }
-   printf("\n"); 
+   printf("\n");
 
    if (protocol == ICMP) {
       printf("\n");
@@ -209,13 +139,13 @@ void analyzeIP(const unsigned char *packet) {
    }
 }
 
-void analyzeICMP(const unsigned char *packet) {
-   icmpInfo *icmp = (icmpInfo *) (packet); 
+void analyzeICMP(unsigned char *packet) {
+   icmpInfo *icmp = (icmpInfo *) (packet);
 
    printf("\tICMP Header\n");
    printf("\t\tType: ");
    if (icmp->icmp_type == ICMP_REQUEST) {
-      printf("Request\n");      
+      printf("Request\n");
    }
    else if (icmp->icmp_type == ICMP_REPLY) {
       printf("Reply\n");
@@ -225,7 +155,7 @@ void analyzeICMP(const unsigned char *packet) {
    }
 }
 
-void analyzeTCP(const unsigned char *packet, ipInfo *ip) {
+void analyzeTCP(unsigned char *packet, ipInfo *ip) {
    tcpInfo *tcp = (tcpInfo *) (packet);
    uint16_t checksum = ntohs(tcp->tcp_checksum);
    uint16_t checksumRet;
@@ -303,9 +233,9 @@ void analyzeTCP(const unsigned char *packet, ipInfo *ip) {
    }
 }
 
-void analyzeUDP(const unsigned char *packet) {
+void analyzeUDP(unsigned char *packet) {
    udpInfo *udp = (udpInfo *) (packet);
-   
+
    printf("\tUDP Header\n");
    if (ntohs(udp->udp_src_port) == 53) {
       printf("\t\tSource Port: DNS\n");
@@ -314,15 +244,15 @@ void analyzeUDP(const unsigned char *packet) {
       printf("\t\tSource Port: %d\n", ntohs(udp->udp_src_port));
    }
    if (ntohs(udp->udp_dest_port) == 53) {
-      printf("\t\tDest Port: DNS\n");   
+      printf("\t\tDest Port: DNS\n");
    }
    else {
-      printf("\t\tDest Port: %d\n", ntohs(udp->udp_dest_port));   
+      printf("\t\tDest Port: %d\n", ntohs(udp->udp_dest_port));
    }
 }
 
 uint16_t tcpChecksum(tcpInfo *tcp, ipInfo *ip) {
-   uint16_t totLen = ntohs(ip->ip_len); 
+   uint16_t totLen = ntohs(ip->ip_len);
    uint32_t tcpOptLen = ((tcp->tcp_off & 0xf0) >>4) * 4; //-20?
    uint32_t ipHeadLen = (ip->ip_version & 0x0f) * 4;
    uint32_t tcpDataLen = totLen - tcpOptLen - ipHeadLen;
@@ -332,26 +262,24 @@ uint16_t tcpChecksum(tcpInfo *tcp, ipInfo *ip) {
    }
    tcpPseudoHeader pseudoHead;
    for(i = 0; i < IP_ADDR_LEN; i++) {
-      pseudoHead.ip_src_addr[i] = ip->ip_src_addr[i]; 
+      pseudoHead.ip_src_addr[i] = ip->ip_src_addr[i];
    }
    for(i = 0; i < IP_ADDR_LEN; i++) {
-      pseudoHead.ip_dest_addr[i] = ip->ip_dest_addr[i]; 
+      pseudoHead.ip_dest_addr[i] = ip->ip_dest_addr[i];
    }
    pseudoHead.reserved = 0;
    pseudoHead.ip_proto = 6;
-   pseudoHead.length = htons(sizeof(tcpInfo) + tcpOptLen - 20 + tcpDataLen); 
+   pseudoHead.length = htons(sizeof(tcpInfo) + tcpOptLen - 20 + tcpDataLen);
 
    uint32_t totTCPLen = sizeof(tcpPseudoHeader) + sizeof(tcpInfo) + tcpDataLen + tcpOptLen - 20;
    uint16_t *tcpPtr = (uint16_t *)calloc(totTCPLen, 2);
    memcpy((unsigned char *) tcpPtr, &pseudoHead, sizeof(tcpPseudoHeader));
    memcpy((unsigned char *) tcpPtr + sizeof(tcpPseudoHeader),
       (unsigned char *)tcp, sizeof(tcpInfo));
-   memcpy((unsigned char *) tcpPtr + sizeof(tcpPseudoHeader) + sizeof(tcpInfo), 
+   memcpy((unsigned char *) tcpPtr + sizeof(tcpPseudoHeader) + sizeof(tcpInfo),
       (unsigned char *) ip + ipHeadLen + sizeof(tcpInfo), tcpOptLen);
-   memcpy((unsigned char *) tcpPtr + sizeof(tcpPseudoHeader) + sizeof(tcpInfo) +tcpOptLen - 20, 
+   memcpy((unsigned char *) tcpPtr + sizeof(tcpPseudoHeader) + sizeof(tcpInfo) +tcpOptLen - 20,
       (unsigned char *) tcp + tcpOptLen, tcpDataLen);
    return ntohs(in_cksum(tcpPtr, totTCPLen));
 
 }
-
-
