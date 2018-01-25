@@ -5,6 +5,11 @@
 #include "trace.h"
 #include <arpa/inet.h>
 #include "smartalloc.h"
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <linux/if_packet.h>
+#include <linux/if_ether.h>
+#include <linux/if_arp.h>
 
 #define BUFF_SIZE 1000
 #define PACKET_SIZE 1024

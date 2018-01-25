@@ -85,22 +85,40 @@ void packetController(unsigned char *pcap, const struct pcap_pkthdr *header, con
       if (ret != 0) {
          printf("RESPOND STATE\n\n");
          STATE = RESPOND_ARP;
-         int s = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
+         
+         int s = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
          if (s == -1) {
             perror("socket error");
          }
          unsigned char *packetToSend = contructPacket(pcap, arp);
          analyzePacket((pcap_t *) pcap, header, packetToSend);
-         struct sockaddr_in sock_addr;
-         memset(&sock_addr, 0, sizeof(struct sockaddr_in));
-         sock_addr.sin_family = AF_INET;
-         sock_addr.sin_port = htons(0);
-         printf("%d\n", inet_addr(ip_addr));
-         unsigned int addr = 0;
-         memcpy(&addr, arp->ip_sender_addr, 4);
-         sock_addr.sin_addr.s_addr = addr;
+         struct ifreq ifr;
+         struct sockaddr_ll socket_address;
+         int ifindex = 0;
+         //int i;
+         //int length;
+         //int sent;
+         
 
-         int retVal = send(s, packetToSend, sizeof(ethernetInfo) + sizeof(arpInfo));
+         strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
+         if (ioctl(s, SIOCGIFINDEX, &ifr) == -1) {
+            perror("SIOCGIFINDEX");
+            exit(-1);
+         }
+
+         ifindex =ifr.ifr_ifindex;
+
+         socket_address.sll_family = PF_PACKET;
+         socket_address.sll_protocol = htons(ETH_P_ARP);
+         socket_address.sll_ifindex = ifindex;
+         socket_address.sll_hatype = ARPHRD_ETHER;
+         socket_address.sll_pkttype = 0;
+         socket_address.sll_halen = 0;
+         socket_address.sll_addr[6] = 0;
+         socket_address.sll_addr[7] = 0;
+         
+
+         int retVal = sendto(s, packetToSend, sizeof(ethernetInfo) + sizeof(arpInfo), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
          if (retVal < 0) {
             perror("ERROR SENDING SOCKET");
          }
@@ -192,8 +210,8 @@ unsigned char *contructPacket(unsigned char *pcap, arpInfo *arp) {
    a->ip_dest_addr[2] = arp->ip_sender_addr[2];
    a->ip_dest_addr[3] = arp->ip_sender_addr[3];
 
-   a->hw_type = 1;
-   a->p_type = 0x0800;
+   a->hw_type = htons(1);
+   a->p_type = htons(0x0800);
    a->hw_len = 6;
    a->p_len = 4;
 
