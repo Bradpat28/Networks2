@@ -44,87 +44,61 @@ int main(int args, char** argv) {
    }
 
    struct bpf_program fp;
-   char filter_exp[] = "arp";
+   char filter_arp[] = "arp or icmp";
 
 
-   if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
-      fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+   if (pcap_compile(handle, &fp, filter_arp, 0, net) == -1) {
+      fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_arp, pcap_geterr(handle));
       return 2;
    }
 
    if (pcap_setfilter(handle, &fp) == -1) {
-      fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+      fprintf(stderr, "Couldn't install filter %s: %s\n", filter_arp, pcap_geterr(handle));
       return(2);
    }
 
    int err = pcap_loop(handle, 1, packetController, (unsigned char *) argv[2]);
-   while (STATE != RESPOND_ARP) {
+   while (STATE != 7) {
       if (err != 0) {
          fprintf(stderr, "%s\n", "Error on pcap_loop");
          return -1;
       }
       err = pcap_loop(handle, 1, packetController, (unsigned char *) argv[2]);
    }
-   if (err != 0) {
-      fprintf(stderr, "%s\n", "Error on pcap_loop");
-   }
+
 
    pcap_close(handle);
    return 0;
 }
 
 void packetController(unsigned char *pcap, const struct pcap_pkthdr *header, const unsigned char *packet) {
+   unsigned char *temp = malloc(ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
+   memcpy(temp, packet, ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
+   analyzePacket((pcap_t *) pcap, header, temp);
    if (STATE == START) {
-      arpInfo *arp = (arpInfo *) (packet + ETHER_HEADER_SIZE);
-      printf("\t\tTarget IP: %d", arp->ip_dest_addr[0]);
-      for (int i = 1; i < IP_ADDR_LEN; i++) {
-         printf(".%d", arp->ip_dest_addr[i]);
-      }
-      printf("\n");
-      int ret =compareIP(pcap, &(arp->ip_dest_addr[0]));
-      if (ret != 0) {
-         printf("RESPOND STATE\n\n");
-         STATE = RESPOND_ARP;
-         
-         int s = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-         if (s == -1) {
-            perror("socket error");
+      ethernetInfo *ether = (ethernetInfo *) packet;
+      if (ether->ether_type == ETHER_ARP_TYPE) {
+         arpInfo *arp = (arpInfo *) (packet + ETHER_HEADER_SIZE);
+         printf("\t\tTarget IP: %d", arp->ip_dest_addr[0]);
+         for (int i = 1; i < IP_ADDR_LEN; i++) {
+            printf(".%d", arp->ip_dest_addr[i]);
          }
-         unsigned char *packetToSend = contructPacket(pcap, arp);
-         analyzePacket((pcap_t *) pcap, header, packetToSend);
-         struct ifreq ifr;
-         struct sockaddr_ll socket_address;
-         int ifindex = 0;
-         //int i;
-         //int length;
-         //int sent;
-         
-
-         strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
-         if (ioctl(s, SIOCGIFINDEX, &ifr) == -1) {
-            perror("SIOCGIFINDEX");
-            exit(-1);
+         printf("\n");
+         int ret =compareIP(pcap, &(arp->ip_dest_addr[0]));
+         if (ret != 0) {
+            printf("RESPOND STATE\n\n");
+            unsigned char *packetToSend = contructPacket(pcap, arp);
+            analyzePacket((pcap_t *) pcap, header, packetToSend);
+            sendPacket(packetToSend);
+            free(packetToSend);
+            STATE = LOOK_FOR_ICMP;
          }
-
-         ifindex =ifr.ifr_ifindex;
-
-         socket_address.sll_family = PF_PACKET;
-         socket_address.sll_protocol = htons(ETH_P_ARP);
-         socket_address.sll_ifindex = ifindex;
-         socket_address.sll_hatype = ARPHRD_ETHER;
-         socket_address.sll_pkttype = 0;
-         socket_address.sll_halen = 0;
-         socket_address.sll_addr[6] = 0;
-         socket_address.sll_addr[7] = 0;
-         
-
-         int retVal = sendto(s, packetToSend, sizeof(ethernetInfo) + sizeof(arpInfo), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
-         if (retVal < 0) {
-            perror("ERROR SENDING SOCKET");
-         }
-         free(packetToSend);
       }
    }
+   if (STATE == LOOK_FOR_ICMP) {
+      printf("LOOOKING FOR ICMPS");
+   }
+   free(temp);
 }
 
 int compareIP(unsigned char *ip, unsigned char *ipByte) {
@@ -220,3 +194,46 @@ unsigned char *contructPacket(unsigned char *pcap, arpInfo *arp) {
 
 
 }
+
+
+void sendPacket(unsigned char *packet) {
+   struct ifreq ifr;
+   struct sockaddr_ll socket_address;
+   int ifindex = 0;
+   
+   int s = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+   if (s == -1) {
+      perror("socket error");
+   }
+   strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
+   if (ioctl(s, SIOCGIFINDEX, &ifr) == -1) {
+      perror("SIOCGIFINDEX");
+      exit(-1);
+   }
+
+   ifindex =ifr.ifr_ifindex;
+   
+   socket_address.sll_family = PF_PACKET;
+   socket_address.sll_protocol = htons(ETH_P_ARP);
+   socket_address.sll_ifindex = ifindex;
+   socket_address.sll_hatype = ARPHRD_ETHER;
+   socket_address.sll_pkttype = 0;
+   socket_address.sll_halen = 0;
+   socket_address.sll_addr[6] = 0;
+   socket_address.sll_addr[7] = 0;
+ 
+
+   int retVal = sendto(s, packet, sizeof(ethernetInfo) + sizeof(arpInfo), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
+   if (retVal < 0) {
+      perror("ERROR SENDING SOCKET");
+   }
+
+
+   close(s);
+}
+
+
+
+
+
+

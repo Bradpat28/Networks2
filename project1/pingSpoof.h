@@ -21,3 +21,4 @@ void packetController(unsigned char *pcap, const struct pcap_pkthdr *header,
    const unsigned char *packet);
 int compareIP(unsigned char *ip, unsigned char* ipByte);
 unsigned char *contructPacket(unsigned char *pcap, arpInfo *arp);
+void sendPacket(unsigned char *packet);
