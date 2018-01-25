@@ -13,9 +13,6 @@
 
 #define BUFF_SIZE 1024
 #define PACKET_SIZE 1024
-#define START 1
-#define RESPOND_ARP 2
-#define LOOK_FOR_ICMP 3
 
 void packetController(unsigned char *pcap, const struct pcap_pkthdr *header,
    const unsigned char *packet);

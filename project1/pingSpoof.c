@@ -1,6 +1,5 @@
 #include "pingSpoof.h"
 
-int STATE = START;
 char *ip_addr;
 char *mac_addr;
 
@@ -14,9 +13,6 @@ int main(int args, char** argv) {
    ip_addr = argv[2];
    mac_addr = argv[1];
 
-   printf("MAC = %s\n", argv[1]);
-   printf("IP = %s\n", argv[2]);
-
    char *dev, errbuf[PCAP_ERRBUF_SIZE];
    bpf_u_int32 mask;
    bpf_u_int32 net;
@@ -26,8 +22,6 @@ int main(int args, char** argv) {
       fprintf(stderr, "Couldn't find default device: %s\n", errbuf);
       return 2;
    }
-
-   printf("Using Device %s to listen\n", dev);
 
    if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
       fprintf(stderr, "Can't get netmask for device %s\n", dev);
@@ -57,64 +51,39 @@ int main(int args, char** argv) {
       return(2);
    }
 
-   int err = pcap_loop(handle, 1, packetController, (unsigned char *) argv[2]);
-   while (STATE != 7) {
-      if (err != 0) {
-         fprintf(stderr, "%s\n", "Error on pcap_loop");
-         return -1;
-      }
-      err = pcap_loop(handle, 1, packetController, (unsigned char *) argv[2]);
-   }
-
-
+   pcap_loop(handle, -1, packetController, (unsigned char *) argv[2]);
    pcap_close(handle);
    return 0;
 }
 
+//Controls the flow of the program
 void packetController(unsigned char *pcap, const struct pcap_pkthdr *header, const unsigned char *packet) {
-   //unsigned char *temp = malloc(ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
-   //memcpy(temp, packet, ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
-   //analyzePacket((pcap_t *) pcap, header, temp);
-   if (STATE == START) {
-      ethernetInfo *ether = (ethernetInfo *) packet;
-      if (ether->ether_type == ETHER_ARP_TYPE) {
-         arpInfo *arp = (arpInfo *) (packet + ETHER_HEADER_SIZE);
-         printf("\t\tTarget IP: %d", arp->ip_dest_addr[0]);
-         for (int i = 1; i < IP_ADDR_LEN; i++) {
-            printf(".%d", arp->ip_dest_addr[i]);
-         }
-         printf("\n");
-         int ret =compareIP(pcap, &(arp->ip_dest_addr[0]));
-         if (ret != 0) {
-            printf("RESPOND STATE\n\n");
-            unsigned char *packetToSend = constructPacket(pcap, arp);
-            analyzePacket((pcap_t *) pcap, header, packetToSend);
-            sendPacketARP(packetToSend);
-            free(packetToSend);
-            STATE = LOOK_FOR_ICMP;
-         }
+   ethernetInfo *ether = (ethernetInfo *) packet;
+   if (ether->ether_type == ETHER_ARP_TYPE) {
+
+      arpInfo *arp = (arpInfo *) (packet + ETHER_HEADER_SIZE);
+      int ret =compareIP(pcap, &(arp->ip_dest_addr[0]));
+      if (ret != 0) {
+         unsigned char *packetToSend = constructPacket(pcap, arp);
+         //analyzePacket((pcap_t *) pcap, header, packetToSend);
+         sendPacketARP(packetToSend);
+         free(packetToSend);
       }
+      
    }
-   if (STATE == LOOK_FOR_ICMP) {
-      ethernetInfo *ether = (ethernetInfo *) packet;
-      if (ether->ether_type == ETHER_IP_TYPE) {
-         ipInfo *ip = (ipInfo *) (packet + ETHER_HEADER_SIZE);
-         printf("\t\tDest IP: %d", ip->ip_dest_addr[0]);
-         for (int i = 1; i < IP_ADDR_LEN; i++) {
-            printf(".%d", ip->ip_dest_addr[i]);
-         }
-         if (compareIP(pcap, &ip->ip_dest_addr[0]) == 1) {
-            printf("SAME IP\n");
-            unsigned char *packetToSend = constructICMP(pcap, ether);
-            analyzePacket((pcap_t *) pcap, header, packetToSend);
-            sendPacketIP(packetToSend);
-         }
+   if (ether->ether_type == ETHER_IP_TYPE) {
+      ipInfo *ip = (ipInfo *) (packet + ETHER_HEADER_SIZE);
+      if (compareIP(pcap, &ip->ip_dest_addr[0]) == 1) {
+         unsigned char *packetToSend = constructICMP(pcap, ether);
+         //analyzePacket((pcap_t *) pcap, header, packetToSend);
+         sendPacketIP(packetToSend);
+         free(packetToSend);
       }
-      printf("LOOOKING FOR ICMPS\n");
+      
    }
-   //free(temp);
 }
 
+//Compares two ip addresses
 int compareIP(unsigned char *ip, unsigned char *ipByte) {
    int matched = 1;
    char *temp = malloc(strlen((char *) ip) + 1);
@@ -137,6 +106,7 @@ int compareIP(unsigned char *ip, unsigned char *ipByte) {
    return matched;
 }
 
+//Contructs the Arp packet to respond to the arp request
 unsigned char *constructPacket(unsigned char *pcap, arpInfo *arp) {
    unsigned char *outPacket = malloc(PACKET_SIZE);
 
@@ -207,6 +177,7 @@ unsigned char *constructPacket(unsigned char *pcap, arpInfo *arp) {
    return outPacket;
 }
 
+//Contructs the ICMP Packet to reply to the request
 unsigned char *constructICMP(unsigned char *pcap, ethernetInfo *ether) {
    unsigned char *outPacket = malloc(PACKET_SIZE);
 
@@ -281,8 +252,9 @@ unsigned char *constructICMP(unsigned char *pcap, ethernetInfo *ether) {
 
 }
 
-
+//Sends the ARP packet given
 void sendPacketARP(unsigned char *packet) {
+   //Found from the resource in the README
    struct ifreq ifr;
    struct sockaddr_ll socket_address;
    int ifindex = 0;
@@ -318,7 +290,9 @@ void sendPacketARP(unsigned char *packet) {
    close(s);
 }
 
+//Sends the ip packet given
 void sendPacketIP(unsigned char *packet) {
+   //Found from the resource in the README
    struct ifreq ifr;
    struct sockaddr_ll socket_address;
    int ifindex = 0;
