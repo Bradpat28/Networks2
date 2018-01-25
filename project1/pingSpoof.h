@@ -11,7 +11,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
 
-#define BUFF_SIZE 1000
+#define BUFF_SIZE 1024
 #define PACKET_SIZE 1024
 #define START 1
 #define RESPOND_ARP 2
@@ -20,5 +20,7 @@
 void packetController(unsigned char *pcap, const struct pcap_pkthdr *header,
    const unsigned char *packet);
 int compareIP(unsigned char *ip, unsigned char* ipByte);
-unsigned char *contructPacket(unsigned char *pcap, arpInfo *arp);
-void sendPacket(unsigned char *packet);
+unsigned char *constructPacket(unsigned char *pcap, arpInfo *arp);
+void sendPacketARP(unsigned char *packet);
+unsigned char *constructICMP(unsigned char *pcap, ethernetInfo *ether);
+void sendPacketIP(unsigned char *packet);

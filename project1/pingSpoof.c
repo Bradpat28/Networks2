@@ -72,9 +72,9 @@ int main(int args, char** argv) {
 }
 
 void packetController(unsigned char *pcap, const struct pcap_pkthdr *header, const unsigned char *packet) {
-   unsigned char *temp = malloc(ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
-   memcpy(temp, packet, ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
-   analyzePacket((pcap_t *) pcap, header, temp);
+   //unsigned char *temp = malloc(ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
+   //memcpy(temp, packet, ETHER_HEADER_SIZE + sizeof(ipInfo) + sizeof(icmpInfo));
+   //analyzePacket((pcap_t *) pcap, header, temp);
    if (STATE == START) {
       ethernetInfo *ether = (ethernetInfo *) packet;
       if (ether->ether_type == ETHER_ARP_TYPE) {
@@ -87,18 +87,32 @@ void packetController(unsigned char *pcap, const struct pcap_pkthdr *header, con
          int ret =compareIP(pcap, &(arp->ip_dest_addr[0]));
          if (ret != 0) {
             printf("RESPOND STATE\n\n");
-            unsigned char *packetToSend = contructPacket(pcap, arp);
+            unsigned char *packetToSend = constructPacket(pcap, arp);
             analyzePacket((pcap_t *) pcap, header, packetToSend);
-            sendPacket(packetToSend);
+            sendPacketARP(packetToSend);
             free(packetToSend);
             STATE = LOOK_FOR_ICMP;
          }
       }
    }
    if (STATE == LOOK_FOR_ICMP) {
-      printf("LOOOKING FOR ICMPS");
+      ethernetInfo *ether = (ethernetInfo *) packet;
+      if (ether->ether_type == ETHER_IP_TYPE) {
+         ipInfo *ip = (ipInfo *) (packet + ETHER_HEADER_SIZE);
+         printf("\t\tDest IP: %d", ip->ip_dest_addr[0]);
+         for (int i = 1; i < IP_ADDR_LEN; i++) {
+            printf(".%d", ip->ip_dest_addr[i]);
+         }
+         if (compareIP(pcap, &ip->ip_dest_addr[0]) == 1) {
+            printf("SAME IP\n");
+            unsigned char *packetToSend = constructICMP(pcap, ether);
+            analyzePacket((pcap_t *) pcap, header, packetToSend);
+            sendPacketIP(packetToSend);
+         }
+      }
+      printf("LOOOKING FOR ICMPS\n");
    }
-   free(temp);
+   //free(temp);
 }
 
 int compareIP(unsigned char *ip, unsigned char *ipByte) {
@@ -123,7 +137,7 @@ int compareIP(unsigned char *ip, unsigned char *ipByte) {
    return matched;
 }
 
-unsigned char *contructPacket(unsigned char *pcap, arpInfo *arp) {
+unsigned char *constructPacket(unsigned char *pcap, arpInfo *arp) {
    unsigned char *outPacket = malloc(PACKET_SIZE);
 
    memset(outPacket, 0, PACKET_SIZE);
@@ -191,12 +205,84 @@ unsigned char *contructPacket(unsigned char *pcap, arpInfo *arp) {
 
 
    return outPacket;
+}
 
+unsigned char *constructICMP(unsigned char *pcap, ethernetInfo *ether) {
+   unsigned char *outPacket = malloc(PACKET_SIZE);
+
+   memset(outPacket, 0, PACKET_SIZE);
+
+   ethernetInfo *e = (ethernetInfo *) outPacket;
+   e->mac_dest_host[0] = ether->mac_src_host[0];
+   e->mac_dest_host[1] = ether->mac_src_host[1];
+   e->mac_dest_host[2] = ether->mac_src_host[2];
+   e->mac_dest_host[3] = ether->mac_src_host[3];
+   e->mac_dest_host[4] = ether->mac_src_host[4];
+   e->mac_dest_host[5] = ether->mac_src_host[5];
+
+   unsigned char mac[6];
+   sscanf(mac_addr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+
+   e->mac_src_host[0] = mac[0];
+   e->mac_src_host[1] = mac[1];
+   e->mac_src_host[2] = mac[2];
+   e->mac_src_host[3] = mac[3];
+   e->mac_src_host[4] = mac[4];
+   e->mac_src_host[5] = mac[5];
+
+   e->ether_type = ETHER_IP_TYPE;
+
+   ipInfo *ipRef = (ipInfo *) ((void *)ether + sizeof(ethernetInfo));
+   ipInfo *ip = (ipInfo *) (outPacket + sizeof(ethernetInfo));
+   ip->ip_proto = 1;
+   //version 4 and 5 bytes length
+   ip->ip_version = 0x45;
+   ip->ip_time_live = ipRef->ip_time_live;
+   ip->ip_type = ipRef->ip_type;
+   ip->ip_len = htons(84);
+
+   int count = 0;
+   char *temp = malloc(strlen((char *) ip_addr) + 1);
+   char *begin = temp;
+   memset(temp, 0, strlen((char *) ip_addr) + 1);
+   memcpy(temp, ip_addr, strlen((char *) ip_addr));
+
+   temp = strtok(temp, ".");
+   while (temp != NULL) {
+      ip->ip_src_addr[count] = atoi(temp);
+      temp = strtok(NULL, ".");
+      count++;
+   }
+   free(begin);
+
+   ip->ip_dest_addr[0] = ipRef->ip_src_addr[0];
+   ip->ip_dest_addr[1] = ipRef->ip_src_addr[1];
+   ip->ip_dest_addr[2] = ipRef->ip_src_addr[2];
+   ip->ip_dest_addr[3] = ipRef->ip_src_addr[3];
+   ip->ip_dest_addr[4] = ipRef->ip_src_addr[4];
+   ip->ip_dest_addr[5] = ipRef->ip_src_addr[5];
+
+   ip->ip_checksum = in_cksum((void*)ip, (ip->ip_version &0x0f) *4);
+
+   icmpInfo *icmpRef = (icmpInfo *) ((void *)ipRef + (ipRef->ip_version &0x0f) *4);
+   icmpInfo *icmp = (icmpInfo *) (outPacket + sizeof(ethernetInfo) + (ip->ip_version &0x0f) *4);
+   icmp->icmp_type = ICMP_REPLY;
+   icmp->icmp_code = icmpRef->icmp_code;
+   icmp->icmp_id = icmpRef->icmp_id;
+   icmp->icmp_seq_num = icmpRef->icmp_seq_num;
+
+   memcpy(icmp->data, icmpRef->data, 58);
+   
+   icmp->icmp_checksum = in_cksum((void*)icmp, sizeof(icmpInfo)); 
+   
+   return outPacket;
+   
+   
 
 }
 
 
-void sendPacket(unsigned char *packet) {
+void sendPacketARP(unsigned char *packet) {
    struct ifreq ifr;
    struct sockaddr_ll socket_address;
    int ifindex = 0;
@@ -231,6 +317,43 @@ void sendPacket(unsigned char *packet) {
 
    close(s);
 }
+
+void sendPacketIP(unsigned char *packet) {
+   struct ifreq ifr;
+   struct sockaddr_ll socket_address;
+   int ifindex = 0;
+   
+   int s = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+   if (s == -1) {
+      perror("socket error");
+   }
+   strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
+   if (ioctl(s, SIOCGIFINDEX, &ifr) == -1) {
+      perror("SIOCGIFINDEX");
+      exit(-1);
+   }
+
+   ifindex =ifr.ifr_ifindex;
+   
+   socket_address.sll_family = PF_PACKET;
+   socket_address.sll_protocol = htons(ETH_P_IP);
+   socket_address.sll_ifindex = ifindex;
+   socket_address.sll_hatype = ARPHRD_ETHER;
+   socket_address.sll_pkttype = 0;
+   socket_address.sll_halen = 0;
+   socket_address.sll_addr[6] = 0;
+   socket_address.sll_addr[7] = 0;
+ 
+
+   int retVal = sendto(s, packet, sizeof(ethernetInfo) + sizeof(ipInfo) + sizeof(icmpInfo), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
+   if (retVal < 0) {
+      perror("ERROR SENDING SOCKET");
+   }
+
+
+   close(s);
+}
+
 
 
 
