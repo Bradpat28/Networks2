@@ -57,6 +57,9 @@ typedef struct icmpInfo {
    unsigned char icmp_type;
    unsigned char icmp_code;
    uint16_t icmp_checksum;
+   uint16_t icmp_id;
+   uint16_t icmp_seq_num;
+   unsigned char data[58];
 } __attribute__((packed)) icmpInfo;
 
 typedef struct tcpInfo {
