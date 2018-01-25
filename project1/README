@@ -1,0 +1,15 @@
+Bradley Patterson
+CPE 465 - Winter 2018
+Project 1
+
+
+I got everything working correctly. I tested the program in the lab, and everything worked.
+
+-I had trouble when initally sending packets in a raw socket, after quite a while of searching
+I found this post which essentially used a different sockaddr_ll field than what I was using.
+I used this code to help send data in the raw packets.
+Here is the post: https://stackoverflow.com/questions/16710040/arp-request-and-reply-using-c-socket-programming
+
+Used my own headers in the trace.h file
+
+
