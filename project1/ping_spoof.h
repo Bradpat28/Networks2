@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pcap.h>
-#include "trace.h"
 #include <arpa/inet.h>
 #include "smartalloc.h"
 #include <sys/socket.h>
@@ -17,6 +16,21 @@
 
 #define BUFF_SIZE 1024
 #define PACKET_SIZE 1024
+#define ETHER_HEADER_SIZE 14
+#define ETHER_ADDR_LEN 6
+#define ETHER_ARP_TYPE 0x0608
+#define ETHER_IP_TYPE 0x0008
+#define IP_ADDR_LEN 4
+#define ARP_REQUEST 1
+#define ARP_REPLY 2
+#define ICMP 1
+#define TCP 2
+#define UDP 3
+#define ICMP_REQUEST 8
+#define ICMP_REPLY 0
+#define IP_HEADER_SIZE 14
+
+
 typedef struct ethernetInfo {
    unsigned char mac_dest_host[ETHER_ADDR_LEN];
    unsigned char mac_src_host[ETHER_ADDR_LEN];
