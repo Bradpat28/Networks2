@@ -1,4 +1,4 @@
-#include "pingSpoof.h"
+#include "ping_spoof.h"
 
 char *ip_addr;
 char *mac_addr;
@@ -69,7 +69,7 @@ void packetController(unsigned char *pcap, const struct pcap_pkthdr *header, con
          sendPacketARP(packetToSend);
          free(packetToSend);
       }
-      
+
    }
    if (ether->ether_type == ETHER_IP_TYPE) {
       ipInfo *ip = (ipInfo *) (packet + ETHER_HEADER_SIZE);
@@ -79,7 +79,7 @@ void packetController(unsigned char *pcap, const struct pcap_pkthdr *header, con
          sendPacketIP(packetToSend);
          free(packetToSend);
       }
-      
+
    }
 }
 
@@ -243,12 +243,12 @@ unsigned char *constructICMP(unsigned char *pcap, ethernetInfo *ether) {
    icmp->icmp_seq_num = icmpRef->icmp_seq_num;
 
    memcpy(icmp->data, icmpRef->data, 58);
-   
-   icmp->icmp_checksum = in_cksum((void*)icmp, sizeof(icmpInfo)); 
-   
+
+   icmp->icmp_checksum = in_cksum((void*)icmp, sizeof(icmpInfo));
+
    return outPacket;
-   
-   
+
+
 
 }
 
@@ -258,7 +258,7 @@ void sendPacketARP(unsigned char *packet) {
    struct ifreq ifr;
    struct sockaddr_ll socket_address;
    int ifindex = 0;
-   
+
    int s = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
    if (s == -1) {
       perror("socket error");
@@ -270,7 +270,7 @@ void sendPacketARP(unsigned char *packet) {
    }
 
    ifindex =ifr.ifr_ifindex;
-   
+
    socket_address.sll_family = PF_PACKET;
    socket_address.sll_protocol = htons(ETH_P_ARP);
    socket_address.sll_ifindex = ifindex;
@@ -279,7 +279,7 @@ void sendPacketARP(unsigned char *packet) {
    socket_address.sll_halen = 0;
    socket_address.sll_addr[6] = 0;
    socket_address.sll_addr[7] = 0;
- 
+
 
    int retVal = sendto(s, packet, sizeof(ethernetInfo) + sizeof(arpInfo), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
    if (retVal < 0) {
@@ -296,7 +296,7 @@ void sendPacketIP(unsigned char *packet) {
    struct ifreq ifr;
    struct sockaddr_ll socket_address;
    int ifindex = 0;
-   
+
    int s = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
    if (s == -1) {
       perror("socket error");
@@ -308,7 +308,7 @@ void sendPacketIP(unsigned char *packet) {
    }
 
    ifindex =ifr.ifr_ifindex;
-   
+
    socket_address.sll_family = PF_PACKET;
    socket_address.sll_protocol = htons(ETH_P_IP);
    socket_address.sll_ifindex = ifindex;
@@ -317,7 +317,7 @@ void sendPacketIP(unsigned char *packet) {
    socket_address.sll_halen = 0;
    socket_address.sll_addr[6] = 0;
    socket_address.sll_addr[7] = 0;
- 
+
 
    int retVal = sendto(s, packet, sizeof(ethernetInfo) + sizeof(ipInfo) + sizeof(icmpInfo), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
    if (retVal < 0) {
@@ -327,10 +327,3 @@ void sendPacketIP(unsigned char *packet) {
 
    close(s);
 }
-
-
-
-
-
-
-
