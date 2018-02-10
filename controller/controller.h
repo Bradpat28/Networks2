@@ -4,15 +4,25 @@
 #include <string.h>
 #include <stdint.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
 
-#include "trace.h"
+
+#include "openflow.h"
 #include "smartalloc.h"
 #include "checksum.h"
+#include "trace.h"
 
 
 #define DEFAULT_OF_PORT 6653
+#define INIT_BUFF_SIZE 2048
 
+
+void sendHelloResponse(int socketNum);
+void sendFeaturesRequest(int socketNum);
 int startController();
 int startTCPSocket();
 int acceptTCP(int serverSocketNum);
 unsigned char *readPacketFromSocket(int socketNum);
+int getTypeFromPacket(unsigned char *packet);
+void sendPacketToSocket(int socketNumber, unsigned char *packet, int packetSize);
+void printOFPacket(unsigned char *packet);

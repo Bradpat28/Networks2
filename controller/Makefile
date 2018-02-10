@@ -1,5 +1,5 @@
 compile : controller.c
-	gcc -Wall -Werror -o controller controller.c checksum.c smartalloc.c -lpcap
+	gcc -Wall -Werror -o controller controller.c checksum.c smartalloc.c trace.c -lpcap
 
 clean :
 	rm -rf ./controller

@@ -90,6 +90,7 @@ typedef struct udpInfo {
 } __attribute__((packed)) udpInfo;
 
 void analyzePacket(pcap_t *pcap, const struct pcap_pkthdr *header, unsigned char *packet);
+void analyzePacketP(unsigned char *);
 void analyzeARP(unsigned char *packet);
 void analyzeIP(unsigned char *packet);
 void analyzeICMP(unsigned char *packet);

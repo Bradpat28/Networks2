@@ -30,6 +30,36 @@ void analyzePacket(pcap_t *pcap, const struct pcap_pkthdr *header, unsigned char
    printf("\n");
 }
 
+void analyzePacketP(unsigned char *packet) {
+   int i = 0;
+   ethernetInfo *ethernet = (ethernetInfo *) (packet);
+   printf("\tEthernet Header\n");
+
+   printf("\t\tDest MAC: %x", ethernet->mac_dest_host[0]);
+   for (i = 1; i < ETHER_ADDR_LEN; i++) {
+      printf(":%x", ethernet->mac_dest_host[i]);
+   }
+   printf("\n");
+   printf("\t\tSource MAC: %x", ethernet->mac_src_host[0]);
+   for (i = 1; i < ETHER_ADDR_LEN; i++) {
+      printf(":%x", ethernet->mac_src_host[i]);
+   }
+   printf("\n");
+   if (ethernet->ether_type == ETHER_ARP_TYPE) {
+      printf("\t\tType: ARP\n\n");
+      analyzeARP(packet + ETHER_HEADER_SIZE);
+   }
+   else if (ethernet->ether_type == ETHER_IP_TYPE) {
+      printf("\t\tType: IP\n\n");
+      analyzeIP(packet + ETHER_HEADER_SIZE);
+   }
+   else {
+      fprintf(stderr, "UNKNOWN TYPE\n");
+   }
+   printf("\n");
+}
+
+
 void analyzeARP(unsigned char *packet) {
    arpInfo *arp = (arpInfo *) (packet);
    int i = 0;
