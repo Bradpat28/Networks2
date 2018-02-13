@@ -43,6 +43,9 @@ int startController () {
             printOFPacket(packet);
             sendHelloResponse(clientSocketNum);
             sendFeaturesRequest(clientSocketNum);
+            sendPortConfigRequest(clientSocketNum);
+
+
             //sendConfigRequest(clientSocketNum);
          }
          else if (getTypeFromPacket(packet) == OFPT_ECHO_REQUEST) {
@@ -128,12 +131,35 @@ void sendConfigRequest(int socketNum) {
    struct ofp_header sendPacket;
    sendPacket.version = 0x4;
    sendPacket.type = OFPT_GET_CONFIG_REQUEST;
-   sendPacket.length = ntohs(sizeof(struct ofp_header));
+   sendPacket.length = htons(sizeof(struct ofp_header));
    sendPacket.xid = 0;
 
    memcpy(buf, &sendPacket, sizeof(struct ofp_header));
 
    sendPacketToSocket(socketNum, buf, sizeof(struct ofp_header));
+}
+
+void sendPortConfigRequest(int socketNum) {
+   unsigned char buf[sizeof(struct ofp_multipart_request) + sizeof(struct ofp_port_stats_request)];
+   memset(buf, 0, sizeof(struct ofp_multipart_request) + sizeof(struct ofp_port_stats_request));
+
+   struct ofp_multipart_request req;
+   req.header.version = 0x4;
+   req.header.type = OFPT_MULTIPART_REQUEST;
+   req.header.length = htons(sizeof(struct ofp_multipart_request) + sizeof(struct ofp_port_stats_request));
+   req.header.xid = 0;
+   req.type = htons(OFPMP_PORT_STATS);
+   req.flags = 0;
+   for (int i = 0; i < 4; i++) {
+      req.pad[i] = 0;
+   }
+   struct ofp_port_stats_request port_req;
+   port_req.port_no = OFPP_ANY;
+
+   memcpy(buf, &req, sizeof(struct ofp_multipart_request));
+   memcpy(buf + sizeof(struct ofp_multipart_request), &port_req, sizeof(struct ofp_port_stats_request));
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
+
 }
 
 
@@ -297,7 +323,7 @@ void printOFPacket(unsigned char *packet) {
    else if (type == OFPT_FEATURES_REPLY) {
       struct ofp_switch_features *features = (struct ofp_switch_features *) packet;
       printf("---Features Reply---\n");
-      printf("\tdata path id = %llx\n", features-> datapath_id);
+      printf("\tdata path id = %llx\n", ntohll(features-> datapath_id));
       printf("\tnumber of buffers = %d\n", ntohl(features->n_buffers));
       printf("\tnumber of tables = %d\n", features->n_tables);
       printf("\tauxiliary_id = %x\n", features->auxiliary_id);
@@ -333,6 +359,23 @@ void printOFPacket(unsigned char *packet) {
          printf("MODIFY\n");
       }
       printOFPort(port->desc);
+
+   }
+   else if (type == OFPT_MULTIPART_REPLY) {
+      struct ofp_multipart_reply *rep = (struct ofp_multipart_reply *) packet;
+      printf("---Multipart Reply---\n");
+      printf("\ttype = ");
+      if (ntohs(rep->type) == OFPMP_PORT_STATS) {
+         printf("PORT STATS\n");
+      }
+      else {
+         printf("UNSUPPORTED TYPE\n");
+      }
+      printf("\tflags = %x\n", rep->flags);
+      int numPorts = ((ntohs(rep->header.length) - sizeof(struct ofp_multipart_reply)) / sizeof(struct ofp_port_stats));
+      for (int i = 0; i < numPorts; i++) {
+         printOFPortStats((struct ofp_port_stats *)(rep->body + i * sizeof(struct ofp_port_stats)));
+      }
 
    }
    else {
@@ -381,4 +424,15 @@ void printOFPort(struct ofp_port p) {
       printf("-Blocked-");
    }
    printf("\n");
+}
+
+void printOFPortStats(struct ofp_port_stats *stats) {
+   printf("\t--Port Number %d--\n", ntohl(stats->port_no));
+   printf("\t\tnumber packets rx = %llu\n", ntohll(stats->rx_packets));
+   printf("\t\tnumber packets tx = %llu\n", ntohll(stats->tx_packets));
+   printf("\t\tnumber bytes rx = %llu\n", ntohll(stats->rx_bytes));
+   printf("\t\tnumber bytes tx = %llu\n", ntohll(stats->tx_bytes));
+   printf("\t\tnumber packets dropped rx = %llu\n", ntohll(stats->rx_dropped));
+   printf("\t\tnumber packets dropped tx = %llu\n", ntohll(stats->tx_dropped));
+   printf("\t\ttime port alive (s) = %u.%u\n", ntohl(stats->duration_sec), ntohl(stats->duration_nsec));
 }
