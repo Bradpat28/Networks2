@@ -19,6 +19,8 @@
 
 void sendHelloResponse(int socketNum);
 void sendFeaturesRequest(int socketNum);
+void sendEchoReply(int socketNum);
+void sendConfigRequest(int socketNum);
 int startController();
 int startTCPSocket();
 int acceptTCP(int serverSocketNum);
@@ -26,3 +28,4 @@ unsigned char *readPacketFromSocket(int socketNum);
 int getTypeFromPacket(unsigned char *packet);
 void sendPacketToSocket(int socketNumber, unsigned char *packet, int packetSize);
 void printOFPacket(unsigned char *packet);
+void printOFPort(struct ofp_port p);

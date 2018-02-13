@@ -39,23 +39,35 @@ int startController () {
       select(clientSocketNum + 1, &rfds, NULL, NULL, &tv);
       if (FD_ISSET(clientSocketNum, &rfds)) {
          unsigned char *packet = readPacketFromSocket(clientSocketNum);
-         printOFPacket(packet);
          if (getTypeFromPacket(packet) == OFPT_HELLO) {
-            sendHelloResponse(clientSocketNum);
-            free(packet);
-            sendFeaturesRequest(clientSocketNum);
-         }
-         else if (getTypeFromPacket(packet) == OFPT_FEATURES_REPLY) {
             printOFPacket(packet);
+            sendHelloResponse(clientSocketNum);
+            sendFeaturesRequest(clientSocketNum);
+            //sendConfigRequest(clientSocketNum);
+         }
+         else if (getTypeFromPacket(packet) == OFPT_ECHO_REQUEST) {
+            printOFPacket(packet);
+            sendEchoReply(clientSocketNum);
+
          }
          else {
-            flag = 0;
+            printOFPacket(packet);
+
+         }
+         if (packet != NULL) {
+            free(packet);
          }
       }
    }
    close(serverSocketNum);
    return 0;
 }
+
+
+
+
+
+
 
 void sendHelloResponse(int socketNum) {
    unsigned char buf[108];
@@ -75,7 +87,7 @@ void sendHelloResponse(int socketNum) {
    memcpy(buf, &sendPacket, sizeof(struct ofp_header));
    memcpy(buf + sizeof(struct ofp_header), &e, sizeof(struct ofp_hello_elem_header));
    memcpy(buf + sizeof(struct ofp_header) + sizeof(struct ofp_hello_elem_header), &bitmap, sizeof(uint32_t));
-   printOFPacket(buf);
+   //printOFPacket(buf);
    sendPacketToSocket(socketNum, buf, sizeof(struct ofp_header) + sizeof(struct ofp_hello_elem_header) + sizeof(uint32_t));
 }
 
@@ -94,9 +106,35 @@ void sendFeaturesRequest(int socketNum) {
    sendPacketToSocket(socketNum, buf, sizeof(struct ofp_header));
 }
 
+void sendEchoReply(int socketNum) {
+   unsigned char buf[sizeof(struct ofp_header)];
+   memset(buf, 0, sizeof(struct ofp_header));
 
+   struct ofp_header sendPacket;
+   sendPacket.version = 0x4;
+   sendPacket.type = OFPT_ECHO_REPLY;
+   sendPacket.length = ntohs(sizeof(struct ofp_header));
+   sendPacket.xid = 0;
 
+   memcpy(buf, &sendPacket, sizeof(struct ofp_header));
 
+   sendPacketToSocket(socketNum, buf, sizeof(struct ofp_header));
+}
+
+void sendConfigRequest(int socketNum) {
+   unsigned char buf[sizeof(struct ofp_header)];
+   memset(buf, 0, sizeof(struct ofp_header));
+
+   struct ofp_header sendPacket;
+   sendPacket.version = 0x4;
+   sendPacket.type = OFPT_GET_CONFIG_REQUEST;
+   sendPacket.length = ntohs(sizeof(struct ofp_header));
+   sendPacket.xid = 0;
+
+   memcpy(buf, &sendPacket, sizeof(struct ofp_header));
+
+   sendPacketToSocket(socketNum, buf, sizeof(struct ofp_header));
+}
 
 
 
@@ -165,10 +203,7 @@ unsigned char *readPacketFromSocket(int socketNumber) {
       printf("MESSAGE LENGTH = 0");
    }
    struct ofp_header *header = (struct ofp_header *) buf;
-   printf("READ SIZE OF %d\n", ntohs(header->length));
-   printf("READ SIZE SUB %lu\n", ntohs(header->length) - sizeof(struct ofp_header));
    if (ntohs(header->length) != 0 && ntohs(header->length) - sizeof(struct ofp_header) > 0) {
-      printf("ASDFASDFASDFASDF\n");
       if ((msgLen = recv(socketNumber, &(buf[sizeof(struct ofp_header)]), ntohs(header->length) - sizeof(struct ofp_header), MSG_WAITALL)) < 0) {
          perror("Recv Call Failure");
          exit(-1);
@@ -204,7 +239,6 @@ int getTypeFromPacket(unsigned char *packet) {
 
 void printOFPacket(unsigned char *packet) {
    int type = getTypeFromPacket(packet);
-   printf("type = %d\n", type);
    if (type == OFPT_HELLO) {
       struct ofp_header *hello= (struct ofp_header *)packet;
       printf("---Hello Packet---\n");
@@ -218,7 +252,6 @@ void printOFPacket(unsigned char *packet) {
       printf("\t\ttype = %d\n", ntohs(e->type));
       printf("\t\tlen = %d\n", ntohs(e->length));
       printf("\t\tbitmap = %x\n", ntohl(e->bitmaps[0]));
-      printf("-------------------\n");
    }
    else if (type == OFPT_ERROR) {
       printf("---Error Packet---\n");
@@ -227,7 +260,7 @@ void printOFPacket(unsigned char *packet) {
       struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
       printf("---Packet In---\n");
       printf("\tbuffer id = %d\n", ntohl(in->buffer_id));
-      printf("\ttot_len = %d\n", ntohl(in->total_len));
+      printf("\ttot_len = %d\n", ntohs(in->total_len));
       printf("\treason = ");
       if (in->reason == OFPR_ACTION) {
          printf("ACTION\n");
@@ -241,8 +274,8 @@ void printOFPacket(unsigned char *packet) {
       else {
          printf("invalid reason code\n");
       }
-      printf("\ttable length = %d\n", in->table_id);
-      printf("\tcookie = %x\n", ntohl(in->cookie));
+      printf("\ttable id = %d\n", in->table_id);
+      printf("\tcookie = %llx\n", in->cookie);
       printf("\tmatch type = %d or ", ntohs(in->match.type));
       if (ntohs(in->match.type) == 1) {
          printf("OXM\n");
@@ -259,12 +292,93 @@ void printOFPacket(unsigned char *packet) {
          printf("\t\tOXM Length = %d\n", OXM_LENGTH(in->match.pad[i]));
       }
 
-
-      printf("\n");
       //analyzePacketP(in->data);
-      printf("-------------------\n");
+   }
+   else if (type == OFPT_FEATURES_REPLY) {
+      struct ofp_switch_features *features = (struct ofp_switch_features *) packet;
+      printf("---Features Reply---\n");
+      printf("\tdata path id = %llx\n", features-> datapath_id);
+      printf("\tnumber of buffers = %d\n", ntohl(features->n_buffers));
+      printf("\tnumber of tables = %d\n", features->n_tables);
+      printf("\tauxiliary_id = %x\n", features->auxiliary_id);
+      printf("\t\t--Capabilities--\n");
+      printf("\t\tOFP Flow Stats = %d\n", ntohl(features->capabilities) & OFPC_FLOW_STATS && 1);
+      printf("\t\tOFP Table Stats = %d\n", ntohl(features->capabilities) & OFPC_TABLE_STATS && 1);
+      printf("\t\tOFP Port Stats = %d\n", ntohl(features->capabilities) & OFPC_PORT_STATS && 1);
+      printf("\t\tOFP Group Stats = %d\n", ntohl(features->capabilities) & OFPC_GROUP_STATS && 1);
+      printf("\t\tOFP IP Reassemble= %d\n", ntohl(features->capabilities) & OFPC_IP_REASM && 1);
+      printf("\t\tOFP Queue Stats = %d\n", ntohl(features->capabilities) & OFPC_QUEUE_STATS && 1);
+      printf("\t\tOFP Port Blocked = %d\n", ntohl(features->capabilities) & OFPC_PORT_BLOCKED && 1);
+
+   }
+   else if (type == OFPT_ECHO_REQUEST) {
+      printf("---Echo Request---\n");
+
+   }
+   else if (type == OFPT_GET_CONFIG_REPLY) {
+      printf("---Config Reply---\n");
+   }
+   else if (type == OFPT_PORT_STATUS) {
+      struct ofp_port_status *port = (struct ofp_port_status *) packet;
+
+      printf("---Port Status---\n");
+      printf("\tReason = ");
+      if (port->reason == OFPPR_ADD) {
+         printf("ADD\n");
+      }
+      else if (port->reason == OFPPR_DELETE) {
+         printf("DELETE\n");
+      }
+      else if (port->reason == OFPPR_MODIFY) {
+         printf("MODIFY\n");
+      }
+      printOFPort(port->desc);
+
    }
    else {
       printf("Could not print packet: Unknown packet type\n");
+      printf("type = %d\n", type);
+      return;
    }
+   printf("-------------------\n");
+   printf("\n");
+}
+
+
+void printOFPort(struct ofp_port p) {
+   printf("\t--Port Desc--\n");
+   printf("\t\tname = %s\n", p.name);
+   printf("\t\tnumber = %d\n", ntohl(p.port_no));
+   printf("\t\thardware addr = ");
+   printf("%x", p.hw_addr[0]);
+   for (int i = 1; i < OFP_ETH_ALEN; i++) {
+      printf(":%x", p.hw_addr[i]);
+   }
+   printf("\n");
+   printf("\t\tconfig =");
+   if (p.config & OFPPC_PORT_DOWN) {
+      printf("-Port Down-");
+   }
+   if (p.config & OFPPC_NO_RECV) {
+      printf("-No Recv-");
+   }
+   if (p.config & OFPPC_NO_FWD) {
+      printf("-No Fwd-");
+   }
+   if (p.config & OFPPC_NO_PACKET_IN) {
+      printf("-No Packet In-");
+   }
+   printf("\n");
+
+   printf("\t\tstate = ");
+   if (p.state & OFPPS_LINK_DOWN) {
+      printf("-Link Down-");
+   }
+   if (p.state & OFPPS_LIVE) {
+      printf("-Live-");
+   }
+   if (p.state & OFPPS_BLOCKED) {
+      printf("-Blocked-");
+   }
+   printf("\n");
 }
