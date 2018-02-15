@@ -6,6 +6,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <inttypes.h>
 
 
 #include "openflow.h"

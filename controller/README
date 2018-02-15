@@ -1,0 +1,11 @@
+Bradley Patterson
+CPE 465 Project 2 Milestone 1
+Winter 2018
+
+
+Overall I tested this on a multi switch configuration, and everything seemed to work fine
+
+When transfering the code from my mac (where I did development) to the unix computer, 
+the unix compiler wouldnt support the ntohll() endianess calls. 
+Though functionality shouldn't be hindered, printing of fields, specifically the multipart packet, may be off.
+

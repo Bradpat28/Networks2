@@ -16,7 +16,7 @@ int main (int args, char **argv) {
    }
 
    startController();
-
+   return 0;
 }
 
 int startController () {
@@ -167,7 +167,7 @@ void sendConfigRequest(int socketNum) {
 void sendPortConfigRequest(int socketNum) {
    unsigned char buf[sizeof(struct ofp_multipart_request) + sizeof(struct ofp_port_stats_request)];
    memset(buf, 0, sizeof(struct ofp_multipart_request) + sizeof(struct ofp_port_stats_request));
-
+   int i = 0;
    struct ofp_multipart_request req;
    req.header.version = 0x4;
    req.header.type = OFPT_MULTIPART_REQUEST;
@@ -175,7 +175,7 @@ void sendPortConfigRequest(int socketNum) {
    req.header.xid = 0;
    req.type = htons(OFPMP_PORT_STATS);
    req.flags = 0;
-   for (int i = 0; i < 4; i++) {
+   for (i = 0; i < 4; i++) {
       req.pad[i] = 0;
    }
    struct ofp_port_stats_request port_req;
@@ -336,7 +336,8 @@ void printOFPacket(unsigned char *packet) {
       }
       printf("\tmatch length = %d\n", ntohs(in->match.length));
       printf("\tmatch padding =\n");
-      for (int i = 0; i < 4; i++) {
+      int i = 0;
+      for (i = 0; i < 4; i++) {
          printf("\t\t--Padding %d--\n", i + 1);
          printf("\t\tOXM Class = %x\n", OXM_CLASS(in->match.pad[i]));
          printf("\t\tOXM Field = %d\n", OXM_FIELD(in->match.pad[i]));
@@ -398,7 +399,8 @@ void printOFPacket(unsigned char *packet) {
       }
       printf("\tflags = %x\n", rep->flags);
       int numPorts = ((ntohs(rep->header.length) - sizeof(struct ofp_multipart_reply)) / sizeof(struct ofp_port_stats));
-      for (int i = 0; i < numPorts; i++) {
+      int i = 0;
+      for (i = 0; i < numPorts; i++) {
          printOFPortStats((struct ofp_port_stats *)(rep->body + i * sizeof(struct ofp_port_stats)));
       }
 
@@ -419,7 +421,8 @@ void printOFPort(struct ofp_port p) {
    printf("\t\tnumber = %d\n", ntohl(p.port_no));
    printf("\t\thardware addr = ");
    printf("%x", p.hw_addr[0]);
-   for (int i = 1; i < OFP_ETH_ALEN; i++) {
+   int i = 0;
+   for (i = 1; i < OFP_ETH_ALEN; i++) {
       printf(":%x", p.hw_addr[i]);
    }
    printf("\n");
