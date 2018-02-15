@@ -20,19 +20,40 @@ int main (int args, char **argv) {
 }
 
 int startController () {
-   int flag = 1;
-   fd_set rfds;
-   struct timeval tv;
-
-   tv.tv_sec = 1;
-   tv.tv_usec = 500;
-
+   pthread_t threads[MAX_SWITCHES];
+   int currThreads = 0;
    printf("Starting Controller on port %d\n", portNum);
    int serverSocketNum = startTCPSocket();
    printf("\tCreated a socket on port %d with Socket number %d\n", portNum, serverSocketNum);
+   long clientSocketNum;
 
-   int clientSocketNum = acceptTCP(serverSocketNum);
-   printf("\tAccepted connection with Socket Number %d\n", clientSocketNum);
+   while((clientSocketNum = acceptTCP(serverSocketNum))) {
+
+      printf("\tAccepted connection with Socket Number %ld\n", clientSocketNum);
+      //sockInfoThread *sockInfo = (sockInfoThread *) calloc(sizeof(sockInfoThread), 1);
+      //sockInfo->sockId = clientSocketNum;
+      pthread_create(&threads[currThreads], NULL, startConnection, (void *)clientSocketNum);
+      //pthread_detach
+      currThreads++;
+   }
+
+   close(serverSocketNum);
+   return 0;
+}
+
+
+void *startConnection(void *socket_info) {
+   int flag = 1;
+   fd_set rfds;
+   struct timeval tv;
+   //sockInfoThread *sockInfo = (sockInfoThread *) socket_info;
+   int clientSocketNum = (long)socket_info;
+
+   printf("clientSocketNum %d\n", clientSocketNum);
+   tv.tv_sec = 1;
+   tv.tv_usec = 500;
+
+
    while (flag) {
       FD_ZERO(&rfds);
       FD_SET(clientSocketNum, &rfds);
@@ -41,11 +62,14 @@ int startController () {
          unsigned char *packet = readPacketFromSocket(clientSocketNum);
          if (getTypeFromPacket(packet) == OFPT_HELLO) {
             printOFPacket(packet);
+            struct ofp_header *helloP = (struct ofp_header *) packet;
+            if (helloP->version != 0x4) {
+               printf("Does not support versions other than 1.3\n");
+               pthread_exit(NULL);
+            }
             sendHelloResponse(clientSocketNum);
             sendFeaturesRequest(clientSocketNum);
             sendPortConfigRequest(clientSocketNum);
-
-
             //sendConfigRequest(clientSocketNum);
          }
          else if (getTypeFromPacket(packet) == OFPT_ECHO_REQUEST) {
@@ -61,13 +85,14 @@ int startController () {
             free(packet);
          }
       }
+      else {
+         //flag = 0;
+      }
    }
-   close(serverSocketNum);
-   return 0;
+   //free(sockInfo);
+   pthread_exit(NULL);
+
 }
-
-
-
 
 
 
