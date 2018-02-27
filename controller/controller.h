@@ -13,7 +13,6 @@
 #include "openflow.h"
 #include "smartalloc.h"
 #include "checksum.h"
-#include "trace.h"
 
 #define MAX_SWITCHES 100
 #define DEFAULT_OF_PORT 6653
@@ -32,6 +31,8 @@ typedef struct portUp {
    long portNum;
    uint8_t hw_addr[OFP_ETH_ALEN];
    int state;
+   int isConnectToSwitch;
+   int connectedSwitchId;
    struct portUp *next;
 }__attribute__((packed)) portUp;
 
@@ -41,6 +42,18 @@ typedef struct switchUp {
    struct switchUp* next;
 } __attribute__((packed)) switchUp;
 
+typedef struct ethernetInfo {
+   unsigned char mac_dest_host[OFP_ETH_ALEN];
+   unsigned char mac_src_host[OFP_ETH_ALEN];
+   uint16_t ether_type;
+} __attribute__((packed)) ethernetInfo;
+
+typedef struct switchProbePacket {
+   ethernetInfo e;
+   long switchId;
+   int portNum;
+} __attribute__((packed)) switchProbePacket;
+
 
 void sendHelloResponse(int socketNum);
 void sendFeaturesRequest(int socketNum);
@@ -48,6 +61,7 @@ void sendEchoReply(int socketNum);
 void sendConfigRequest(int socketNum);
 void sendPortConfigRequest(int socketNum);
 void sendPortDescRequest(int socketNum);
+void sendProbePacket(int socketNum, long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);
 void addPortToListStats(long switchId, struct ofp_port_stats *stats);
 void addPortToListPort(long switchId, struct ofp_port p);
 void addSwitchToList(long switchId);
