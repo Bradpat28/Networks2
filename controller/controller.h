@@ -18,10 +18,28 @@
 #define MAX_SWITCHES 100
 #define DEFAULT_OF_PORT 6653
 #define INIT_BUFF_SIZE 2048
+#define SHOW_PACKET_IN 1
+#define PORT_STAT_UNKNOWN 0
+#define PORT_STAT_DOWN -1
+#define PORT_SENDING 3
+#define PORT_SUPPRESSED 4
 
 typedef struct sockInfoThread {
    int sockId;
 }__attribute__((packed)) sockInfoThread;
+
+typedef struct portUp {
+   long portNum;
+   uint8_t hw_addr[OFP_ETH_ALEN];
+   int state;
+   struct portUp *next;
+}__attribute__((packed)) portUp;
+
+typedef struct switchUp {
+   portUp *portList;
+   long switchId;
+   struct switchUp* next;
+} __attribute__((packed)) switchUp;
 
 
 void sendHelloResponse(int socketNum);
@@ -29,6 +47,15 @@ void sendFeaturesRequest(int socketNum);
 void sendEchoReply(int socketNum);
 void sendConfigRequest(int socketNum);
 void sendPortConfigRequest(int socketNum);
+void sendPortDescRequest(int socketNum);
+void addPortToListStats(long switchId, struct ofp_port_stats *stats);
+void addPortToListPort(long switchId, struct ofp_port p);
+void addSwitchToList(long switchId);
+void stateUpdatePortFromSwitch(long switchId, long portNum, int state);
+void addPortHwAddr(long switchId, struct ofp_port p);
+void deletePortFromList(long switchId, long portNum);
+void topologyUpdated();
+
 int startController();
 void *startConnection(void *socket_info);
 int startTCPSocket();
@@ -39,3 +66,5 @@ void sendPacketToSocket(int socketNumber, unsigned char *packet, int packetSize)
 void printOFPacket(unsigned char *packet);
 void printOFPort(struct ofp_port p);
 void printOFPortStats(struct ofp_port_stats *p);
+void printSwitchList();
+void printPortList(portUp *head);
