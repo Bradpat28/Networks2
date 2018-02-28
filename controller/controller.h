@@ -33,6 +33,7 @@ typedef struct portUp {
    int state;
    int isConnectToSwitch;
    int connectedSwitchId;
+   int hasBeenAdded;
    struct portUp *next;
 }__attribute__((packed)) portUp;
 
@@ -62,6 +63,7 @@ void sendConfigRequest(int socketNum);
 void sendPortConfigRequest(int socketNum);
 void sendPortDescRequest(int socketNum);
 void sendProbePacket(int socketNum, long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);
+void sendFlowModAdd(int clientSocketNum, int portNum,  uint8_t hw_addr[OFP_ETH_ALEN]);
 void addPortToListStats(long switchId, struct ofp_port_stats *stats);
 void addPortToListPort(long switchId, struct ofp_port p);
 void addSwitchToList(long switchId);
@@ -70,7 +72,9 @@ void addPortHwAddr(long switchId, struct ofp_port p);
 void deletePortFromList(long switchId, long portNum);
 void topologyUpdated();
 
+
 int startController();
+void *startGraphThread(void *args);
 void *startConnection(void *socket_info);
 int startTCPSocket();
 int acceptTCP(int serverSocketNum);
