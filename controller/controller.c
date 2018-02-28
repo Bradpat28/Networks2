@@ -151,7 +151,7 @@ void *startConnection(void *socket_info) {
                for (int i = 0; i < OFP_ETH_ALEN; i++) {
                   broadcast_addr[i] = 0xff;
                }
-               sendFlowModAdd(clientSocketNum, port->port_no, broadcast_addr);
+               //sendFlowModAdd(clientSocketNum, po, broadcast_addr);
                topologyUpdated();
             }
          }
@@ -201,8 +201,36 @@ void *startConnection(void *socket_info) {
             }
          }
          else if (getTypeFromPacket(packet) == OFPT_PACKET_IN) {
+            printOFPacket(packet);
             struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
             //TODO FIGURE OUT PACKET IN
+            if (in->reason == OFPR_ACTION) {
+               int headerLen = ntohs(in->header.length);
+               int totalLen = ntohs(in->total_len);
+               int matchLen = ntohs(in->match.length);
+               printf("headerLen = %d totalLen %d matchLen %d\n", headerLen, totalLen, matchLen);
+               printf("sdfadf %d\n", headerLen - totalLen);
+               uint8_t *data = &packet[headerLen - totalLen];
+               uint8_t src_addr[OFP_ETH_ALEN];
+               uint32_t *oxm = (void *)&packet[sizeof(struct ofp_packet_in)];
+               if (oxm[-1] == ntohl(OXM_OF_IN_PORT)) {
+                  int portNum = ntohl(oxm[0]);
+                  printf("%d\n", portNum);
+                  printf("%d\n", oxm[0]);
+                  for (int i = 0; i < OFP_ETH_ALEN; i++) {
+                     src_addr[i] = data[i + OFP_ETH_ALEN];
+                  }
+                  for (int i = 0; i < OFP_ETH_ALEN; i++) {
+                     printf("%x:", src_addr[i]);
+                  }
+                  printf("\n");
+                  addPortHwAddrInfo(switchId, portNum, data);
+                  printSwitchList();
+                  sendFlowModAdd(clientSocketNum, portNum, data);
+               }
+
+               printf("\n");
+            }
 
          }
          else {
@@ -400,7 +428,7 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    struct ofp_action_output *act = (void *) (buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions));
    act->type = OFPAT_OUTPUT;
    act->len= htons(sizeof(struct ofp_action_output));
-   act->port = portNum;
+   act->port = htonl(portNum);
    act->max_len = 0;
 
    sendPacketToSocket(socketNum, buf, sizeof(buf));
@@ -487,7 +515,27 @@ void addPortHwAddr(long switchId, struct ofp_port p) {
       }
       if (tempP != NULL) {
          for (int i = 0; i < OFP_ETH_ALEN; i++) {
-            tempP->hw_addr[i] = p.hw_addr[i];
+            tempP->port_addr[i] = p.hw_addr[i];
+         }
+      }
+   }
+   pthread_mutex_unlock(&networkGraphMutex);
+}
+
+void addPortHwAddrInfo(long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
+   pthread_mutex_lock(&networkGraphMutex);
+   switchUp *temp = globalSwitchList;
+   while (temp != NULL && temp->switchId != switchId) {
+      temp = temp->next;
+   }
+   if (temp != NULL) {
+      portUp *tempP = temp->portList;
+      while (tempP != NULL && tempP->portNum != portNum) {
+         tempP = tempP->next;
+      }
+      if (tempP != NULL) {
+         for (int i = 0; i < OFP_ETH_ALEN; i++) {
+            tempP->hw_addr[i] = hw_addr[i];
          }
       }
    }
@@ -838,6 +886,12 @@ void printPortList(portUp *head) {
       int i = 0;
       for (i = 1; i < OFP_ETH_ALEN; i++) {
          printf(":%x", temp->hw_addr[i]);
+      }
+      printf("\n");
+      printf("\tport addr = ");
+      printf("%x", temp->port_addr[0]);
+      for (i = 1; i < OFP_ETH_ALEN; i++) {
+         printf(":%x", temp->port_addr[i]);
       }
       printf("\n");
       if (temp->isConnectToSwitch) {

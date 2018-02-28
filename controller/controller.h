@@ -30,6 +30,7 @@ typedef struct sockInfoThread {
 typedef struct portUp {
    long portNum;
    uint8_t hw_addr[OFP_ETH_ALEN];
+   uint8_t port_addr[OFP_ETH_ALEN];
    int state;
    int isConnectToSwitch;
    int connectedSwitchId;
@@ -69,6 +70,7 @@ void addPortToListPort(long switchId, struct ofp_port p);
 void addSwitchToList(long switchId);
 void stateUpdatePortFromSwitch(long switchId, long portNum, int state);
 void addPortHwAddr(long switchId, struct ofp_port p);
+void addPortHwAddrInfo(long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);
 void deletePortFromList(long switchId, long portNum);
 void topologyUpdated();
 
