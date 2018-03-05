@@ -157,8 +157,14 @@ void *startConnection(void *socket_info) {
                for (int i = 0; i < OFP_ETH_ALEN; i++) {
                   broadcast_addr[i] = 0xff;
                }
-               sendFlowModAddPorts(clientSocketNum, portNums, numActualPorts, broadcast_addr);
+               uint32_t *newPorts = (uint32_t *) calloc(numActualPorts + 1, sizeof(uint32_t));
+               for (int i = 0; i < numActualPorts; i++) {
+                  newPorts[i] = portNums[i];
+               }
+               newPorts[numActualPorts] = OFPP_CONTROLLER;
+               sendFlowModAddPorts(clientSocketNum, newPorts, numActualPorts + 1, broadcast_addr);
                free(portNums);
+               free(newPorts);
                topologyUpdated();
 
             }
@@ -211,15 +217,13 @@ void *startConnection(void *socket_info) {
          }
          else if (getTypeFromPacket(packet) == OFPT_PACKET_IN) {
             printOFPacket(packet);
-            /*struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
+            struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
             //TODO FIGURE OUT PACKET IN
-            if (in->reason == OFPR_ACTION) {
+            if (in->reason == OFPR_NO_MATCH) {
                printf("HERERERERERERERER\n");
                int headerLen = ntohs(in->header.length);
                int totalLen = ntohs(in->total_len);
-               int matchLen = ntohs(in->match.length);
-               printf("headerLen = %d totalLen %d matchLen %d\n", headerLen, totalLen, matchLen);
-               printf("sdfadf %d\n", headerLen - totalLen);
+               //int matchLen = ntohs(in->match.length);
                uint8_t *data = &packet[headerLen - totalLen];
                uint8_t src_addr[OFP_ETH_ALEN];
                uint32_t *oxm = (void *)&packet[sizeof(struct ofp_packet_in)];
@@ -234,13 +238,13 @@ void *startConnection(void *socket_info) {
                      printf("%x:", src_addr[i]);
                   }
                   printf("\n");
-                  addPortHwAddrInfo(switchId, portNum, data);
+                  addPortHwAddrInfo(switchId, portNum, src_addr);
                   printSwitchList();
-                  sendFlowModAdd(clientSocketNum, portNum, data);
+                  sendFlowModAdd(clientSocketNum, portNum, src_addr);
                }
 
                printf("\n");
-            }*/
+            }
 
          }
          else {
@@ -409,7 +413,7 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    flow->header.length = htons(sizeof(buf));
    flow->header.xid = 0;
    flow->cookie = 0xf;
-   flow->priority = OFP_DEFAULT_PRIORITY;
+   flow->priority = htons(OFP_DEFAULT_PRIORITY + 25);
    flow->table_id = 0;
    flow->command = OFPFC_ADD;
    flow->idle_timeout = ntohs(0);
@@ -452,14 +456,14 @@ void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_
    flow->header.length = htons(sizeof(buf));
    flow->header.xid = 0;
    flow->cookie = 0xf;
-   flow->priority = OFP_DEFAULT_PRIORITY;
+   flow->priority = htonl(OFP_DEFAULT_PRIORITY);
    flow->table_id = 0;
    flow->command = OFPFC_ADD;
    flow->idle_timeout = ntohs(0);
    flow->hard_timeout = ntohs(0);
    flow->buffer_id = OFP_NO_BUFFER;
-   flow->out_port = OFPP_ANY;
-   flow->out_group = OFPG_ANY;
+   flow->out_port = htonl(OFPP_ANY);
+   flow->out_group = htonl(OFPG_ANY);
    flow->flags = htons(OFPFF_SEND_FLOW_REM);
 
    flow->match.type = ntohs(OFPMT_OXM);
@@ -932,6 +936,7 @@ void printOFPacket(unsigned char *packet) {
    else {
       printf("Could not print packet: Unknown packet type\n");
       printf("type = %d\n", type);
+      pthread_mutex_unlock(&printMutex);
       return;
    }
    printf("-------------------\n");
