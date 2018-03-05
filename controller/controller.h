@@ -60,11 +60,13 @@ typedef struct switchProbePacket {
 void sendHelloResponse(int socketNum);
 void sendFeaturesRequest(int socketNum);
 void sendEchoReply(int socketNum);
-void sendConfigRequest(int socketNum);
+void sendConfigSet(int socketNum);
 void sendPortConfigRequest(int socketNum);
 void sendPortDescRequest(int socketNum);
 void sendProbePacket(int socketNum, long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);
-void sendFlowModAdd(int clientSocketNum, int portNum,  uint8_t hw_addr[OFP_ETH_ALEN]);
+void sendFlowModAdd(int socketNum, int portNum,  uint8_t hw_addr[OFP_ETH_ALEN]);
+void sendFlowModAddDefaultController(int socketNum);
+void sendFlowModDeleteAll(int socketNum);
 void addPortToListStats(long switchId, struct ofp_port_stats *stats);
 void addPortToListPort(long switchId, struct ofp_port p);
 void addSwitchToList(long switchId);

@@ -107,9 +107,10 @@ void *startConnection(void *socket_info) {
             }
             sendHelloResponse(clientSocketNum);
             sendFeaturesRequest(clientSocketNum);
-            //sendPortConfigRequest(clientSocketNum);
+            sendFlowModDeleteAll(clientSocketNum);
+            //sendConfigSet(clientSocketNum);
+            sendFlowModAddDefaultController(clientSocketNum);
             sendPortDescRequest(clientSocketNum);
-            //sendConfigRequest(clientSocketNum);
          }
          else if (getTypeFromPacket(packet) == OFPT_ECHO_REQUEST) {
             printOFPacket(packet);
@@ -126,39 +127,43 @@ void *startConnection(void *socket_info) {
                }
             }
             else if (ntohs(rep->type) == OFPMP_PORT_DESC) {
-               //Need to update with the mac address
                int numPorts = ((ntohs(rep->header.length) - sizeof(struct ofp_multipart_reply)) / sizeof(struct ofp_port));
                int i = 0;
                for (i = 0; i < numPorts; i++) {
                   struct ofp_port *port = (struct ofp_port *)(rep->body + i * sizeof(struct ofp_port));
-                  addPortToListPort(switchId, *port);
-                  addPortHwAddr(switchId, *port);
-                  if ((ntohl(port->state) & OFPPS_LINK_DOWN) == 1) {
-                     stateUpdatePortFromSwitch(switchId, ntohl(port->port_no), PORT_STAT_DOWN);
-                  }
-                  else if ((ntohl(port->state) & OFPPS_LINK_DOWN) == 0){
-                     if ((ntohl(port->config) & OFPPC_PORT_DOWN) == 1) {
-                        stateUpdatePortFromSwitch(switchId, ntohl(port->port_no), PORT_SUPPRESSED);
+                  if (ntohl(port->port_no) != OFPP_LOCAL) {
+
+                     addPortToListPort(switchId, *port);
+                     addPortHwAddr(switchId, *port);
+                     if ((ntohl(port->state) & OFPPS_LINK_DOWN) == 1) {
+                        stateUpdatePortFromSwitch(switchId, ntohl(port->port_no), PORT_STAT_DOWN);
                      }
-                     else {
-                        stateUpdatePortFromSwitch(switchId, ntohl(port->port_no), PORT_SENDING);
+                     else if ((ntohl(port->state) & OFPPS_LINK_DOWN) == 0){
+                        if ((ntohl(port->config) & OFPPC_PORT_DOWN) == 1) {
+                           stateUpdatePortFromSwitch(switchId, ntohl(port->port_no), PORT_SUPPRESSED);
+                        }
+                        else {
+                           stateUpdatePortFromSwitch(switchId, ntohl(port->port_no), PORT_SENDING);
+                        }
                      }
+                     sendProbePacket(clientSocketNum, switchId, ntohl(port->port_no), port->hw_addr);
+                     //sendFlowModAdd(clientSocketNum, port->port_no, port->hw_addr);
+                     uint8_t broadcast_addr[OFP_ETH_ALEN];
+                     for (int i = 0; i < OFP_ETH_ALEN; i++) {
+                        broadcast_addr[i] = 0xff;
+                     }
+                     sendFlowModAdd(clientSocketNum, ntohl(port->port_no), broadcast_addr);
                   }
-                  sendProbePacket(clientSocketNum, switchId, port->port_no, port->hw_addr);
-                  //sendFlowModAdd(clientSocketNum, port->port_no, port->hw_addr);
                }
-               uint8_t broadcast_addr[OFP_ETH_ALEN];
-               for (int i = 0; i < OFP_ETH_ALEN; i++) {
-                  broadcast_addr[i] = 0xff;
-               }
-               //sendFlowModAdd(clientSocketNum, po, broadcast_addr);
+
                topologyUpdated();
             }
          }
          else if (getTypeFromPacket(packet) == OFPT_FEATURES_REPLY) {
             printOFPacket(packet);
             struct ofp_switch_features *features = (struct ofp_switch_features *) packet;
-            switchId = ntohll(features->datapath_id);
+            switchId = ntohl(features->datapath_id>> 32);
+            printf("Switch ID = %lx\n", switchId);
             addSwitchToList(switchId);
          }
          else if (getTypeFromPacket(packet) == OFPT_PORT_STATUS) {
@@ -205,6 +210,7 @@ void *startConnection(void *socket_info) {
             struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
             //TODO FIGURE OUT PACKET IN
             if (in->reason == OFPR_ACTION) {
+               printf("HERERERERERERERER\n");
                int headerLen = ntohs(in->header.length);
                int totalLen = ntohs(in->total_len);
                int matchLen = ntohs(in->match.length);
@@ -242,7 +248,7 @@ void *startConnection(void *socket_info) {
          }
       }
       else {
-         flag = 0;
+         //flag = 0;
       }
    }
    //free(sockInfo);
@@ -304,19 +310,19 @@ void sendEchoReply(int socketNum) {
    sendPacketToSocket(socketNum, buf, sizeof(struct ofp_header));
 }
 
-void sendConfigRequest(int socketNum) {
-   unsigned char buf[sizeof(struct ofp_header)];
-   memset(buf, 0, sizeof(struct ofp_header));
+void sendConfigSet(int socketNum) {
+   unsigned char buf[sizeof(struct ofp_switch_config)];
+   memset(buf, 0, sizeof(buf));
 
-   struct ofp_header sendPacket;
-   sendPacket.version = 0x4;
-   sendPacket.type = OFPT_GET_CONFIG_REQUEST;
-   sendPacket.length = htons(sizeof(struct ofp_header));
-   sendPacket.xid = 0;
+   struct ofp_switch_config *sendPacket = (void *)buf;
+   sendPacket->header.version = 0x4;
+   sendPacket->header.type = OFPT_SET_CONFIG;
+   sendPacket->header.length = htons(sizeof(struct ofp_switch_config));
+   sendPacket->header.xid = 0;
+   sendPacket->flags = 0;
+   sendPacket->miss_send_len = OFPCML_NO_BUFFER;
 
-   memcpy(buf, &sendPacket, sizeof(struct ofp_header));
-
-   sendPacketToSocket(socketNum, buf, sizeof(struct ofp_header));
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
 
 void sendPortConfigRequest(int socketNum) {
@@ -377,14 +383,14 @@ void sendProbePacket(int socketNum, long switchId, int portNum, uint8_t hw_addr[
    struct ofp_action_output *out = (void *)(buf + sizeof(struct ofp_packet_out));
    out->type = OFPAT_OUTPUT;
    out->len = ntohs(sizeof(struct ofp_action_output));
-   out->port = portNum;
+   out->port = htonl(portNum);
    out->max_len = 0;//= ntohs(sizeof(switchProbePacket));
 
    switchProbePacket *probe = (void *)(buf + sizeof(struct ofp_packet_out) + sizeof(struct ofp_action_output));
    memcpy(probe->e.mac_dest_host, hw_addr, OFP_ETH_ALEN);
    memset(probe->e.mac_src_host, 0, OFP_ETH_ALEN);
    probe->switchId = switchId;
-   probe->portNum = ntohl(portNum);
+   probe->portNum = portNum;
 
    sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
@@ -399,7 +405,7 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    flow->header.length = htons(sizeof(buf));
    flow->header.xid = 0;
    flow->cookie = 0xf;
-   flow->priority = htons(100);
+   flow->priority = OFP_DEFAULT_PRIORITY;
    flow->table_id = 0;
    flow->command = OFPFC_ADD;
    flow->idle_timeout = ntohs(0);
@@ -412,12 +418,16 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    flow->match.type = ntohs(OFPMT_OXM);
    flow->match.length = htons(sizeof(struct ofp_match) + OFP_ETH_ALEN);
     //sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output));
-   uint32_t *temp = (void *) (buf + sizeof(struct ofp_flow_mod));
-   temp[-1] = ntohl(OXM_OF_ETH_DST);
-   uint8_t *addr = (void *)temp;
+   uint32_t *temp = (void *) (buf + sizeof(struct ofp_flow_mod) - sizeof(struct ofp_match) + sizeof(uint32_t));
+   uint16_t *temp2 = (void *)temp;
+   printf("---------------------------%x\n", OXM_OF_ETH_DST);
+   temp2[0]= htonl(OXM_OF_ETH_DST);
+   temp2[1] = htonl(OXM_OF_ETH_DST)>>16;
+   uint8_t *addr = (void *)&temp2[2];
    for (int i = 0; i < OFP_ETH_ALEN; i++) {
       addr[i] = hw_addr[i];
    }
+
    //temp[1] = 0;
 
 
@@ -429,9 +439,78 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    act->type = OFPAT_OUTPUT;
    act->len= htons(sizeof(struct ofp_action_output));
    act->port = htonl(portNum);
-   act->max_len = 0;
+   act->max_len = OFPCML_MAX;
 
    sendPacketToSocket(socketNum, buf, sizeof(buf));
+}
+
+void sendFlowModAddDefaultController(int socketNum) {
+   unsigned char buf[sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output)];
+   memset(buf, 0, sizeof(buf));
+
+   struct ofp_flow_mod *flow = (void *)buf;
+   flow->header.version = 0x4;
+   flow->header.type = OFPT_FLOW_MOD;
+   flow->header.length = htons(sizeof(buf));
+   flow->header.xid = 0;
+   flow->cookie = 0xf;
+   flow->priority = 0;
+   flow->table_id = 0;
+   flow->command = OFPFC_ADD;
+   flow->idle_timeout = ntohs(0);
+   flow->hard_timeout = ntohs(0);
+   flow->buffer_id = OFP_NO_BUFFER;
+   flow->out_port = OFPP_ANY;
+   flow->out_group = OFPG_ANY;
+   flow->flags = htons(OFPFF_SEND_FLOW_REM);
+
+   flow->match.type = ntohs(OFPMT_OXM);
+   flow->match.length = htons(sizeof(struct ofp_match) - 4);
+    //sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output));
+   //uint32_t *temp = (void *) (buf + sizeof(struct ofp_flow_mod) - sizeof(struct ofp_match) + sizeof(uint32_t));
+   //printf("-------%lx\n\n\n", ((UINT64_C(1) << 40) - 1));
+   //temp[0] = htonl(OXM_HEADER(OFPXMC_OPENFLOW_BASIC,-1,0));
+
+
+
+   //flow->match.oxm_fields = OXM_OF_ETH_DST;
+   struct ofp_instruction_actions *instr = (void *)(buf + sizeof(struct ofp_flow_mod));
+   instr->type = ntohs(OFPIT_APPLY_ACTIONS);
+   instr->len = htons(sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output));
+   struct ofp_action_output *act = (void *) (buf + sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions));
+   act->type = OFPAT_OUTPUT;
+   act->len= htons(sizeof(struct ofp_action_output));
+   act->port = htonl(OFPP_CONTROLLER);
+   act->max_len = OFPCML_MAX;
+
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
+}
+
+void sendFlowModDeleteAll(int socketNum) {
+   unsigned char buf[sizeof(struct ofp_flow_mod)];
+
+   memset(buf, 0, sizeof(buf));
+   struct ofp_flow_mod *flow = (void *)buf;
+   flow->header.version = 0x4;
+   flow->header.type = OFPT_FLOW_MOD;
+   flow->header.length = htons(sizeof(buf));
+   flow->header.xid = 0;
+   flow->cookie = 0xf;
+   flow->priority = OFP_DEFAULT_PRIORITY;
+   flow->table_id = OFPTT_ALL;
+   flow->command = OFPFC_DELETE;
+   flow->idle_timeout = ntohs(0);
+   flow->hard_timeout = ntohs(0);
+   flow->buffer_id = OFP_NO_BUFFER;
+   flow->out_port = OFPP_ANY;
+   flow->out_group = OFPG_ANY;
+   flow->flags = htons(OFPFF_SEND_FLOW_REM);
+
+   flow->match.type = ntohs(OFPMT_OXM);
+   flow->match.length = htons(sizeof(struct ofp_match) - 4);
+
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
+
 }
 
 void addPortToListStats(long switchId, struct ofp_port_stats *stats) {
@@ -718,7 +797,7 @@ void printOFPacket(unsigned char *packet) {
          printf("invalid reason code\n");
       }
       printf("\ttable id = %d\n", in->table_id);
-      printf("\tcookie = %llx\n", in->cookie);
+      printf("\tcookie = %lx\n", in->cookie);
       printf("\tmatch type = %d or ", ntohs(in->match.type));
       if (ntohs(in->match.type) == 1) {
          printf("OXM\n");
@@ -740,7 +819,7 @@ void printOFPacket(unsigned char *packet) {
    else if (type == OFPT_FEATURES_REPLY) {
       struct ofp_switch_features *features = (struct ofp_switch_features *) packet;
       printf("---Features Reply---\n");
-      printf("\tdata path id = %llx\n", ntohll(features->datapath_id));
+      printf("\tdata path id = %x\n", ntohl(features->datapath_id));
       printf("\tnumber of buffers = %d\n", ntohl(features->n_buffers));
       printf("\tnumber of tables = %d\n", features->n_tables);
       printf("\tauxiliary_id = %x\n", features->auxiliary_id);
@@ -856,12 +935,12 @@ void printOFPort(struct ofp_port p) {
 
 void printOFPortStats(struct ofp_port_stats *stats) {
    printf("\t--Port Number %d--\n", ntohl(stats->port_no));
-   printf("\t\tnumber packets rx = %llu\n", ntohll(stats->rx_packets));
-   printf("\t\tnumber packets tx = %llu\n", ntohll(stats->tx_packets));
-   printf("\t\tnumber bytes rx = %llu\n", ntohll(stats->rx_bytes));
-   printf("\t\tnumber bytes tx = %llu\n", ntohll(stats->tx_bytes));
-   printf("\t\tnumber packets dropped rx = %llu\n", ntohll(stats->rx_dropped));
-   printf("\t\tnumber packets dropped tx = %llu\n", ntohll(stats->tx_dropped));
+   printf("\t\tnumber packets rx = %u\n", ntohl(stats->rx_packets));
+   printf("\t\tnumber packets tx = %u\n", ntohl(stats->tx_packets));
+   printf("\t\tnumber bytes rx = %u\n", ntohl(stats->rx_bytes));
+   printf("\t\tnumber bytes tx = %u\n", ntohl(stats->tx_bytes));
+   printf("\t\tnumber packets dropped rx = %u\n", ntohl(stats->rx_dropped));
+   printf("\t\tnumber packets dropped tx = %u\n", ntohl(stats->tx_dropped));
    printf("\t\ttime port alive (s) = %u.%u\n", ntohl(stats->duration_sec), ntohl(stats->duration_nsec));
 }
 
