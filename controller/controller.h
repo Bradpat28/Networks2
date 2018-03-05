@@ -66,6 +66,7 @@ void sendPortDescRequest(int socketNum);
 void sendProbePacket(int socketNum, long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModAdd(int socketNum, int portNum,  uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModAddDefaultController(int socketNum);
+void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModDeleteAll(int socketNum);
 void addPortToListStats(long switchId, struct ofp_port_stats *stats);
 void addPortToListPort(long switchId, struct ofp_port p);

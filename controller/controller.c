@@ -129,10 +129,11 @@ void *startConnection(void *socket_info) {
             else if (ntohs(rep->type) == OFPMP_PORT_DESC) {
                int numPorts = ((ntohs(rep->header.length) - sizeof(struct ofp_multipart_reply)) / sizeof(struct ofp_port));
                int i = 0;
+               int numActualPorts = 0;
+               uint32_t *portNums = (uint32_t *) calloc(numPorts, sizeof(uint32_t));
                for (i = 0; i < numPorts; i++) {
                   struct ofp_port *port = (struct ofp_port *)(rep->body + i * sizeof(struct ofp_port));
                   if (ntohl(port->port_no) != OFPP_LOCAL) {
-
                      addPortToListPort(switchId, *port);
                      addPortHwAddr(switchId, *port);
                      if ((ntohl(port->state) & OFPPS_LINK_DOWN) == 1) {
@@ -148,15 +149,18 @@ void *startConnection(void *socket_info) {
                      }
                      sendProbePacket(clientSocketNum, switchId, ntohl(port->port_no), port->hw_addr);
                      //sendFlowModAdd(clientSocketNum, port->port_no, port->hw_addr);
-                     uint8_t broadcast_addr[OFP_ETH_ALEN];
-                     for (int i = 0; i < OFP_ETH_ALEN; i++) {
-                        broadcast_addr[i] = 0xff;
-                     }
-                     sendFlowModAdd(clientSocketNum, ntohl(port->port_no), broadcast_addr);
+                     portNums[numActualPorts] = ntohl(port->port_no);
+                     numActualPorts++;
                   }
                }
-
+               uint8_t broadcast_addr[OFP_ETH_ALEN];
+               for (int i = 0; i < OFP_ETH_ALEN; i++) {
+                  broadcast_addr[i] = 0xff;
+               }
+               sendFlowModAddPorts(clientSocketNum, portNums, numActualPorts, broadcast_addr);
+               free(portNums);
                topologyUpdated();
+
             }
          }
          else if (getTypeFromPacket(packet) == OFPT_FEATURES_REPLY) {
@@ -207,7 +211,7 @@ void *startConnection(void *socket_info) {
          }
          else if (getTypeFromPacket(packet) == OFPT_PACKET_IN) {
             printOFPacket(packet);
-            struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
+            /*struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
             //TODO FIGURE OUT PACKET IN
             if (in->reason == OFPR_ACTION) {
                printf("HERERERERERERERER\n");
@@ -236,7 +240,7 @@ void *startConnection(void *socket_info) {
                }
 
                printf("\n");
-            }
+            }*/
 
          }
          else {
@@ -420,7 +424,47 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
     //sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output));
    uint32_t *temp = (void *) (buf + sizeof(struct ofp_flow_mod) - sizeof(struct ofp_match) + sizeof(uint32_t));
    uint16_t *temp2 = (void *)temp;
-   printf("---------------------------%x\n", OXM_OF_ETH_DST);
+   temp2[0]= htonl(OXM_OF_ETH_DST);
+   temp2[1] = htonl(OXM_OF_ETH_DST)>>16;
+   uint8_t *addr = (void *)&temp2[2];
+   for (int i = 0; i < OFP_ETH_ALEN; i++) {
+      addr[i] = hw_addr[i];
+   }
+   struct ofp_instruction_actions *instr = (void *)(buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod));
+   instr->type = ntohs(OFPIT_APPLY_ACTIONS);
+   instr->len = htons(sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output));
+   struct ofp_action_output *act = (void *) (buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions));
+   act->type = OFPAT_OUTPUT;
+   act->len= htons(sizeof(struct ofp_action_output));
+   act->port = htonl(portNum);
+   act->max_len = OFPCML_MAX;
+
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
+}
+
+void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_t hw_addr[OFP_ETH_ALEN]) {
+   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output)];
+   memset(buf, 0, sizeof(buf));
+
+   struct ofp_flow_mod *flow = (void *)buf;
+   flow->header.version = 0x4;
+   flow->header.type = OFPT_FLOW_MOD;
+   flow->header.length = htons(sizeof(buf));
+   flow->header.xid = 0;
+   flow->cookie = 0xf;
+   flow->priority = OFP_DEFAULT_PRIORITY;
+   flow->table_id = 0;
+   flow->command = OFPFC_ADD;
+   flow->idle_timeout = ntohs(0);
+   flow->hard_timeout = ntohs(0);
+   flow->buffer_id = OFP_NO_BUFFER;
+   flow->out_port = OFPP_ANY;
+   flow->out_group = OFPG_ANY;
+   flow->flags = htons(OFPFF_SEND_FLOW_REM);
+
+   flow->match.type = ntohs(OFPMT_OXM);
+   flow->match.length = htons(sizeof(struct ofp_match) + OFP_ETH_ALEN);
+   uint16_t *temp2 = (void *) (buf + sizeof(struct ofp_flow_mod) - sizeof(struct ofp_match) + sizeof(uint32_t));
    temp2[0]= htonl(OXM_OF_ETH_DST);
    temp2[1] = htonl(OXM_OF_ETH_DST)>>16;
    uint8_t *addr = (void *)&temp2[2];
@@ -434,12 +478,14 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    //flow->match.oxm_fields = OXM_OF_ETH_DST;
    struct ofp_instruction_actions *instr = (void *)(buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod));
    instr->type = ntohs(OFPIT_APPLY_ACTIONS);
-   instr->len = htons(sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output));
-   struct ofp_action_output *act = (void *) (buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions));
-   act->type = OFPAT_OUTPUT;
-   act->len= htons(sizeof(struct ofp_action_output));
-   act->port = htonl(portNum);
-   act->max_len = OFPCML_MAX;
+   instr->len = htons(sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output));
+   for (int i = 0; i < numPorts; i++) {
+      struct ofp_action_output *act = (void *) (buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + i *sizeof(struct ofp_action_output));
+      act->type = OFPAT_OUTPUT;
+      act->len= htons(sizeof(struct ofp_action_output));
+      act->port = htonl(portNums[i]);
+      act->max_len = OFPCML_MAX;
+   }
 
    sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
