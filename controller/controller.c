@@ -109,7 +109,8 @@ void *startConnection(void *socket_info) {
             sendFeaturesRequest(clientSocketNum);
             sendFlowModDeleteAll(clientSocketNum);
             //sendConfigSet(clientSocketNum);
-            sendFlowModAddDefaultController(clientSocketNum);
+            sendFlowModAddDefaultController(clientSocketNum, 0);
+            sendFlowModAddDefaultController(clientSocketNum, 1);
             sendPortDescRequest(clientSocketNum);
          }
          else if (getTypeFromPacket(packet) == OFPT_ECHO_REQUEST) {
@@ -157,14 +158,8 @@ void *startConnection(void *socket_info) {
                for (int i = 0; i < OFP_ETH_ALEN; i++) {
                   broadcast_addr[i] = 0xff;
                }
-               uint32_t *newPorts = (uint32_t *) calloc(numActualPorts + 1, sizeof(uint32_t));
-               for (int i = 0; i < numActualPorts; i++) {
-                  newPorts[i] = portNums[i];
-               }
-               newPorts[numActualPorts] = OFPP_CONTROLLER;
-               sendFlowModAddPorts(clientSocketNum, newPorts, numActualPorts + 1, broadcast_addr);
+               sendFlowModAddPorts(clientSocketNum, portNums, numActualPorts, broadcast_addr);
                free(portNums);
-               free(newPorts);
                topologyUpdated();
 
             }
@@ -220,7 +215,6 @@ void *startConnection(void *socket_info) {
             struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
             //TODO FIGURE OUT PACKET IN
             if (in->reason == OFPR_NO_MATCH) {
-               printf("HERERERERERERERER\n");
                int headerLen = ntohs(in->header.length);
                int totalLen = ntohs(in->total_len);
                //int matchLen = ntohs(in->match.length);
@@ -230,20 +224,14 @@ void *startConnection(void *socket_info) {
                if (oxm[-1] == ntohl(OXM_OF_IN_PORT)) {
                   int portNum = ntohl(oxm[0]);
                   printf("%d\n", portNum);
-                  printf("%d\n", oxm[0]);
                   for (int i = 0; i < OFP_ETH_ALEN; i++) {
                      src_addr[i] = data[i + OFP_ETH_ALEN];
                   }
-                  for (int i = 0; i < OFP_ETH_ALEN; i++) {
-                     printf("%x:", src_addr[i]);
-                  }
-                  printf("\n");
                   addPortHwAddrInfo(switchId, portNum, src_addr);
                   printSwitchList();
                   sendFlowModAdd(clientSocketNum, portNum, src_addr);
+                  sendFlowModAddSrcLearn(clientSocketNum, src_addr);
                }
-
-               printf("\n");
             }
 
          }
@@ -404,7 +392,7 @@ void sendProbePacket(int socketNum, long switchId, int portNum, uint8_t hw_addr[
 }
 
 void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
-   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output)];
+   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output) + sizeof(struct ofp_instruction_goto_table)];
    memset(buf, 0, sizeof(buf));
 
    struct ofp_flow_mod *flow = (void *)buf;
@@ -413,7 +401,7 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    flow->header.length = htons(sizeof(buf));
    flow->header.xid = 0;
    flow->cookie = 0xf;
-   flow->priority = htons(OFP_DEFAULT_PRIORITY + 25);
+   flow->priority = htons(OFP_DEFAULT_PRIORITY);
    flow->table_id = 0;
    flow->command = OFPFC_ADD;
    flow->idle_timeout = ntohs(0);
@@ -443,11 +431,17 @@ void sendFlowModAdd(int socketNum, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    act->port = htonl(portNum);
    act->max_len = OFPCML_MAX;
 
+   int loc = OFP_ETH_ALEN + 2 + sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output);
+   struct ofp_instruction_goto_table *instr2 = (void *) (buf + loc);
+   instr2->type = ntohs(OFPIT_GOTO_TABLE);
+   instr2->len = htons(sizeof(struct ofp_instruction_goto_table));
+   instr2->table_id = 1;
+
    sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
 
 void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_t hw_addr[OFP_ETH_ALEN]) {
-   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output)];
+   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output) + sizeof(struct ofp_instruction_goto_table)];
    memset(buf, 0, sizeof(buf));
 
    struct ofp_flow_mod *flow = (void *)buf;
@@ -456,7 +450,7 @@ void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_
    flow->header.length = htons(sizeof(buf));
    flow->header.xid = 0;
    flow->cookie = 0xf;
-   flow->priority = htonl(OFP_DEFAULT_PRIORITY);
+   flow->priority = htons(OFP_DEFAULT_PRIORITY);
    flow->table_id = 0;
    flow->command = OFPFC_ADD;
    flow->idle_timeout = ntohs(0);
@@ -476,9 +470,6 @@ void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_
       addr[i] = hw_addr[i];
    }
 
-   //temp[1] = 0;
-
-
    //flow->match.oxm_fields = OXM_OF_ETH_DST;
    struct ofp_instruction_actions *instr = (void *)(buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod));
    instr->type = ntohs(OFPIT_APPLY_ACTIONS);
@@ -491,10 +482,16 @@ void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_
       act->max_len = OFPCML_MAX;
    }
 
+   int loc = OFP_ETH_ALEN + 2 + sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output);
+   struct ofp_instruction_goto_table *instr2 = (void *) (buf + loc);
+   instr2->type = ntohs(OFPIT_GOTO_TABLE);
+   instr2->len = htons(sizeof(struct ofp_instruction_goto_table));
+   instr2->table_id = 1;
+
    sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
 
-void sendFlowModAddDefaultController(int socketNum) {
+void sendFlowModAddDefaultController(int socketNum, uint8_t tableId) {
    unsigned char buf[sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output)];
    memset(buf, 0, sizeof(buf));
 
@@ -505,7 +502,7 @@ void sendFlowModAddDefaultController(int socketNum) {
    flow->header.xid = 0;
    flow->cookie = 0xf;
    flow->priority = 0;
-   flow->table_id = 0;
+   flow->table_id = tableId;
    flow->command = OFPFC_ADD;
    flow->idle_timeout = ntohs(0);
    flow->hard_timeout = ntohs(0);
@@ -532,6 +529,42 @@ void sendFlowModAddDefaultController(int socketNum) {
    act->len= htons(sizeof(struct ofp_action_output));
    act->port = htonl(OFPP_CONTROLLER);
    act->max_len = OFPCML_MAX;
+
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
+
+}
+
+void sendFlowModAddSrcLearn(int socketNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
+   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2];
+   memset(buf, 0, sizeof(buf));
+
+   struct ofp_flow_mod *flow = (void *)buf;
+   flow->header.version = 0x4;
+   flow->header.type = OFPT_FLOW_MOD;
+   flow->header.length = htons(sizeof(buf));
+   flow->header.xid = 0;
+   flow->cookie = 0xf;
+   flow->priority = htons(OFP_DEFAULT_PRIORITY);
+   flow->table_id = 1;
+   flow->command = OFPFC_ADD;
+   flow->idle_timeout = ntohs(0);
+   flow->hard_timeout = ntohs(0);
+   flow->buffer_id = OFP_NO_BUFFER;
+   flow->out_port = OFPP_ANY;
+   flow->out_group = OFPG_ANY;
+   flow->flags = htons(OFPFF_SEND_FLOW_REM);
+
+   flow->match.type = ntohs(OFPMT_OXM);
+   flow->match.length = htons(sizeof(struct ofp_match) + OFP_ETH_ALEN);
+    //sizeof(struct ofp_instruction_actions) + sizeof(struct ofp_action_output));
+   uint32_t *temp = (void *) (buf + sizeof(struct ofp_flow_mod) - sizeof(struct ofp_match) + sizeof(uint32_t));
+   uint16_t *temp2 = (void *)temp;
+   temp2[0]= htonl(OXM_OF_ETH_SRC);
+   temp2[1] = htonl(OXM_OF_ETH_SRC)>>16;
+   uint8_t *addr = (void *)&temp2[2];
+   for (int i = 0; i < OFP_ETH_ALEN; i++) {
+      addr[i] = hw_addr[i];
+   }
 
    sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
@@ -943,7 +976,6 @@ void printOFPacket(unsigned char *packet) {
    printf("\n");
    pthread_mutex_unlock(&printMutex);
 }
-
 
 void printOFPort(struct ofp_port p) {
    printf("\t--Port Desc--\n");
