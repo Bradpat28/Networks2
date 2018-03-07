@@ -21,7 +21,7 @@
 #define PORT_STAT_UNKNOWN 0
 #define PORT_STAT_DOWN -1
 #define PORT_SENDING 3
-#define PORT_SUPPRESSED 4
+#define PORT_SUPPRESSED 2
 
 typedef struct sockInfoThread {
    int sockId;
@@ -52,8 +52,8 @@ typedef struct ethernetInfo {
 
 typedef struct switchProbePacket {
    ethernetInfo e;
-   long switchId;
-   int portNum;
+   uint64_t switchId;
+   uint32_t portNum;
 } __attribute__((packed)) switchProbePacket;
 
 
@@ -72,6 +72,7 @@ void sendFlowModDeleteAll(int socketNum);
 void addPortToListStats(long switchId, struct ofp_port_stats *stats);
 void addPortToListPort(long switchId, struct ofp_port p);
 void addSwitchToList(long switchId);
+void addSwitchConnection(long switchId, int portId, long connectedSwitchId);
 void stateUpdatePortFromSwitch(long switchId, long portNum, int state);
 void addPortHwAddr(long switchId, struct ofp_port p);
 void addPortHwAddrInfo(long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);

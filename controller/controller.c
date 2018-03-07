@@ -223,14 +223,29 @@ void *startConnection(void *socket_info) {
                uint32_t *oxm = (void *)&packet[sizeof(struct ofp_packet_in)];
                if (oxm[-1] == ntohl(OXM_OF_IN_PORT)) {
                   int portNum = ntohl(oxm[0]);
-                  printf("%d\n", portNum);
                   for (int i = 0; i < OFP_ETH_ALEN; i++) {
                      src_addr[i] = data[i + OFP_ETH_ALEN];
                   }
-                  addPortHwAddrInfo(switchId, portNum, src_addr);
-                  printSwitchList();
-                  sendFlowModAdd(clientSocketNum, portNum, src_addr);
-                  sendFlowModAddSrcLearn(clientSocketNum, src_addr);
+                  int equal = 1;
+                  for (int i = 0; i < OFP_ETH_ALEN; i++) {
+                     if (src_addr[i] != 0xfe) {
+                        equal = 0;
+                     }
+                  }
+                  if (equal) {
+                     switchProbePacket *probe = (void*) data;
+                     addSwitchConnection(switchId, portNum, probe->switchId);
+                     addSwitchConnection(probe->switchId, probe->portNum, switchId);
+                     topologyUpdated();
+
+                  }
+                  else {
+                     addPortHwAddrInfo(switchId, portNum, src_addr);
+                     sendFlowModAdd(clientSocketNum, portNum, src_addr);
+                     sendFlowModAddSrcLearn(clientSocketNum, src_addr);
+                     topologyUpdated();
+                  }
+
                }
             }
 
@@ -384,7 +399,9 @@ void sendProbePacket(int socketNum, long switchId, int portNum, uint8_t hw_addr[
 
    switchProbePacket *probe = (void *)(buf + sizeof(struct ofp_packet_out) + sizeof(struct ofp_action_output));
    memcpy(probe->e.mac_dest_host, hw_addr, OFP_ETH_ALEN);
-   memset(probe->e.mac_src_host, 0, OFP_ETH_ALEN);
+   for (int i = 0; i < OFP_ETH_ALEN; i++) {
+      probe->e.mac_src_host[i] = 0xFE;
+   }
    probe->switchId = switchId;
    probe->portNum = portNum;
 
@@ -643,6 +660,25 @@ void addSwitchToList(long switchId) {
    newSwitch->portList = NULL;
    newSwitch->switchId = switchId;
    globalSwitchList = newSwitch;
+   pthread_mutex_unlock(&networkGraphMutex);
+}
+
+void addSwitchConnection(long switchId, int portId, long connectedSwitchId) {
+   pthread_mutex_lock(&networkGraphMutex);
+   switchUp *temp = globalSwitchList;
+   while (temp != NULL && temp->switchId != switchId) {
+      temp = temp->next;
+   }
+   if (temp != NULL) {
+      portUp *temp2 = temp->portList;
+      while (temp2 != NULL && temp2->portNum != portId) {
+         temp2 = temp2->next;
+      }
+      if (temp2 != NULL) {
+         temp2->isConnectToSwitch = 1;
+         temp2->connectedSwitchId = connectedSwitchId;
+      }
+   }
    pthread_mutex_unlock(&networkGraphMutex);
 }
 
@@ -1057,7 +1093,7 @@ void printPortList(portUp *head) {
       }
       printf("\n");
       if (temp->isConnectToSwitch) {
-         printf("Connected to Switch %d\n", temp->connectedSwitchId);
+         printf("\t-------Connected to Switch------ %d\n", temp->connectedSwitchId);
       }
       temp = temp->next;
    }
