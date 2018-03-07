@@ -90,7 +90,7 @@ void addSwitchToList(long switchId);
 void addSwitchConnection(long switchId, int portId, long connectedSwitchId);
 int checkInTree(treeConstruct *head, long fromSwitch, long toSwitch);
 treeConstruct *addToTree(treeConstruct *head, long fromSwitch, long toSwitch);
-idList *getListOfConnect(treeConstruct *head, long fromSwitch);
+idList *getListOfConnect(treeConstruct *head, long fromSwitch, long stop);
 void clearTree(treeConstruct *head);
 void stateUpdatePortFromSwitch(long switchId, long portNum, int state);
 void addPortHwAddr(long switchId, struct ofp_port p);

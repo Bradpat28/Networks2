@@ -71,12 +71,22 @@ void *startGraphThread(void *args) {
          printf("HERE\n");
          portUp *ports = temp->portList;
          while (ports != NULL) {
+            printf("PORT\n");
             if (ports->isConnectToSwitch) {
                if (checkInTree(head, temp->switchId, ports->connectedSwitchId)) {
-                  printf("-------LINK DETECTED ON PATH <%ld, %ld> -> <%ld, ?>\n", temp->switchId, ports->portNum, ports->connectedSwitchId);
+                  printf("-------LOOP DETECTED ON PATH <%ld, %ld> -> <%ld, ?>\n", temp->switchId, ports->portNum, ports->connectedSwitchId);
                }
                else {
+                  printf("SWITCH %ld PORT %ld CONNECTED %ld\n", temp->switchId, ports->portNum, ports->connectedSwitchId);
                   head = addToTree(head, temp->switchId, ports->connectedSwitchId);
+
+                  treeConstruct *temp2 = head;
+                  printf("------------LINK GRAPH-----------\n");
+                  while (temp2 != NULL) {
+
+                     printf("---<%ld, %ld>---\n", temp2->fromSwitch, temp2->toSwitch);
+                     temp2 = temp2->next;
+                  }
                }
             }
             ports = ports->next;
@@ -84,8 +94,9 @@ void *startGraphThread(void *args) {
          temp = temp->next;
       }
       treeConstruct *temp2 = head;
+      printf("------------LINK GRAPH-----------\n");
       while (temp2 != NULL) {
-         printf("------------LINK GRAPH-----------\n");
+
          printf("---<%ld, %ld>---\n", temp2->fromSwitch, temp2->toSwitch);
          temp2 = temp2->next;
       }
@@ -93,6 +104,7 @@ void *startGraphThread(void *args) {
       clearTree(head);
       pthread_mutex_unlock(&networkGraphMutex);
       printSwitchList();
+      printf("-----------------------------------------\n");
    }
 
    pthread_exit(NULL);
@@ -231,7 +243,7 @@ void *startConnection(void *socket_info) {
             }
          }
          else if (getTypeFromPacket(packet) == OFPT_PACKET_IN) {
-            printOFPacket(packet);
+            //printOFPacket(packet);
             struct ofp_packet_in *in = (struct ofp_packet_in *) packet;
             //TODO FIGURE OUT PACKET IN
             if (in->reason == OFPR_NO_MATCH) {
@@ -263,7 +275,7 @@ void *startConnection(void *socket_info) {
                      addPortHwAddrInfo(switchId, portNum, src_addr);
                      sendFlowModAdd(clientSocketNum, portNum, src_addr);
                      sendFlowModAddSrcLearn(clientSocketNum, src_addr);
-                     topologyUpdated();
+                     //topologyUpdated();
                   }
 
                }
@@ -719,20 +731,30 @@ treeConstruct *addToTree(treeConstruct *head, long fromSwitch, long toSwitch) {
       treeConstruct *temp = (treeConstruct *) calloc(sizeof(treeConstruct), 1);
       temp->fromSwitch = fromSwitch;
       temp->toSwitch = toSwitch;
+      treeConstruct *temp2 = head;
+      printf("------------LINK GRAPH-----------\n");
+
+      while (temp2 != NULL) {
+         printf("---<%ld, %ld>---\n", temp2->fromSwitch, temp2->toSwitch);
+         temp2 = temp2->next;
+      }
       if (head == NULL) {
          temp->next = NULL;
          return temp;
       }
       else {
-         idList *listConnect = getListOfConnect(head, toSwitch);
+         printf("-------------------------\n");
+         idList *listConnect = getListOfConnect(head, toSwitch, fromSwitch);
          idList *iter = listConnect;
          treeConstruct *iter2 = temp;
          while (iter != NULL) {
-            iter2->next = (void *)calloc(sizeof(treeConstruct), 1);
-            iter2->next->fromSwitch = fromSwitch;
-            iter2->next->toSwitch = iter->id;
+            if (iter->id != fromSwitch) {
+               iter2->next = (void *)calloc(sizeof(treeConstruct), 1);
+               iter2->next->fromSwitch = fromSwitch;
+               iter2->next->toSwitch = iter->id;
+               iter2 = iter2->next;
+            }
             iter = iter->next;
-            iter2 = iter2->next;
          }
          iter2->next = head;
          while (listConnect != NULL) {
@@ -745,24 +767,25 @@ treeConstruct *addToTree(treeConstruct *head, long fromSwitch, long toSwitch) {
 
 }
 
-idList *getListOfConnect(treeConstruct *head, long fromSwitch) {
+idList *getListOfConnect(treeConstruct *head, long fromSwitch, long stop) {
    treeConstruct *temp = head;
    idList *list = NULL;
    while (temp != NULL) {
-      if (temp->fromSwitch == fromSwitch) {
+      if (temp->fromSwitch == fromSwitch && temp->toSwitch != stop) {
          if (list == NULL) {
             list = (idList *) calloc(sizeof(idList), 1);
             list->id = temp->toSwitch;
-            list->next = getListOfConnect(head, temp->toSwitch);
+               list->next = getListOfConnect(head, temp->toSwitch, temp->fromSwitch);
+
          }
          else {
             idList *temp2 = list;
-            idList *newId = (idList *) calloc(sizeof(idList), 1);
-            newId->id = temp->toSwitch;
             while (temp2->next != NULL) {
                temp2 = temp2->next;
             }
-            newId->next = getListOfConnect(head, temp->toSwitch);
+            idList *newId = (idList *) calloc(sizeof(idList), 1);
+            newId->id = temp->toSwitch;
+            newId->next = getListOfConnect(head, temp->toSwitch, temp->fromSwitch);
             temp2->next = newId;
          }
       }
