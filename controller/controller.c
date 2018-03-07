@@ -6,6 +6,7 @@ pthread_mutex_t networkGraphMutex;
 pthread_mutex_t graphUpdatedMutex;
 pthread_cond_t cond;
 switchUp *globalSwitchList;
+removePortCommand *globalRemoveCommandList;
 int wasUpdated;
 
 int main (int args, char **argv) {
@@ -64,13 +65,32 @@ void *startGraphThread(void *args) {
       printf("%s\n", "Waiting");
       pthread_cond_wait(&cond, &networkGraphMutex);
       printf("UPDATING GRAPH\n");
-      /*switchUp *temp = globalSwitchList;
+      treeConstruct *head = NULL;
+      switchUp *temp = globalSwitchList;
       while (temp != NULL) {
-         portUp *port = temp->portList;
-         if (!port->hasBeenAdded && port->isConnectToSwitch) {
-
+         printf("HERE\n");
+         portUp *ports = temp->portList;
+         while (ports != NULL) {
+            if (ports->isConnectToSwitch) {
+               if (checkInTree(head, temp->switchId, ports->connectedSwitchId)) {
+                  printf("-------LINK DETECTED ON PATH <%ld, %ld> -> <%ld, ?>\n", temp->switchId, ports->portNum, ports->connectedSwitchId);
+               }
+               else {
+                  head = addToTree(head, temp->switchId, ports->connectedSwitchId);
+               }
+            }
+            ports = ports->next;
          }
-      }*/
+         temp = temp->next;
+      }
+      treeConstruct *temp2 = head;
+      while (temp2 != NULL) {
+         printf("------------LINK GRAPH-----------\n");
+         printf("---<%ld, %ld>---\n", temp2->fromSwitch, temp2->toSwitch);
+         temp2 = temp2->next;
+      }
+      printf("-------------------------\n");
+      clearTree(head);
       pthread_mutex_unlock(&networkGraphMutex);
       printSwitchList();
    }
@@ -682,6 +702,83 @@ void addSwitchConnection(long switchId, int portId, long connectedSwitchId) {
    pthread_mutex_unlock(&networkGraphMutex);
 }
 
+int checkInTree(treeConstruct *head, long fromSwitch, long toSwitch) {
+   treeConstruct *temp = head;
+   while (temp != NULL) {
+      if (temp->fromSwitch == fromSwitch) {
+         if (temp->toSwitch == toSwitch) {
+            return 1;
+         }
+      }
+      temp = temp->next;
+   }
+   return 0;
+}
+
+treeConstruct *addToTree(treeConstruct *head, long fromSwitch, long toSwitch) {
+      treeConstruct *temp = (treeConstruct *) calloc(sizeof(treeConstruct), 1);
+      temp->fromSwitch = fromSwitch;
+      temp->toSwitch = toSwitch;
+      if (head == NULL) {
+         temp->next = NULL;
+         return temp;
+      }
+      else {
+         idList *listConnect = getListOfConnect(head, toSwitch);
+         idList *iter = listConnect;
+         treeConstruct *iter2 = temp;
+         while (iter != NULL) {
+            iter2->next = (void *)calloc(sizeof(treeConstruct), 1);
+            iter2->next->fromSwitch = fromSwitch;
+            iter2->next->toSwitch = iter->id;
+            iter = iter->next;
+            iter2 = iter2->next;
+         }
+         iter2->next = head;
+         while (listConnect != NULL) {
+            idList *hold = listConnect->next;
+            free(listConnect);
+            listConnect = hold;
+         }
+         return temp;
+      }
+
+}
+
+idList *getListOfConnect(treeConstruct *head, long fromSwitch) {
+   treeConstruct *temp = head;
+   idList *list = NULL;
+   while (temp != NULL) {
+      if (temp->fromSwitch == fromSwitch) {
+         if (list == NULL) {
+            list = (idList *) calloc(sizeof(idList), 1);
+            list->id = temp->toSwitch;
+            list->next = getListOfConnect(head, temp->toSwitch);
+         }
+         else {
+            idList *temp2 = list;
+            idList *newId = (idList *) calloc(sizeof(idList), 1);
+            newId->id = temp->toSwitch;
+            while (temp2->next != NULL) {
+               temp2 = temp2->next;
+            }
+            newId->next = getListOfConnect(head, temp->toSwitch);
+            temp2->next = newId;
+         }
+      }
+      temp = temp->next;
+   }
+   return list;
+}
+
+void clearTree(treeConstruct *head) {
+   while (head != NULL) {
+      treeConstruct *temp = head->next;
+      free(head);
+      head = temp;
+   }
+}
+
 void stateUpdatePortFromSwitch(long switchId, long portNum, int state) {
    pthread_mutex_lock(&networkGraphMutex);
    switchUp *temp = globalSwitchList;
@@ -1093,7 +1190,7 @@ void printPortList(portUp *head) {
       }
       printf("\n");
       if (temp->isConnectToSwitch) {
-         printf("\t-------Connected to Switch------ %d\n", temp->connectedSwitchId);
+         printf("\t-------Connected to Switch------ %ld\n", temp->connectedSwitchId);
       }
       temp = temp->next;
    }

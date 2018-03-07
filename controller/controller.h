@@ -33,7 +33,7 @@ typedef struct portUp {
    uint8_t port_addr[OFP_ETH_ALEN];
    int state;
    int isConnectToSwitch;
-   int connectedSwitchId;
+   long connectedSwitchId;
    int hasBeenAdded;
    struct portUp *next;
 }__attribute__((packed)) portUp;
@@ -56,6 +56,21 @@ typedef struct switchProbePacket {
    uint32_t portNum;
 } __attribute__((packed)) switchProbePacket;
 
+typedef struct treeConstruct {
+   long fromSwitch;
+   long toSwitch;
+   struct treeConstruct *next;
+} __attribute__((packed)) treeConstruct;
+
+typedef struct idList {
+   long id;
+   struct idList *next;
+} __attribute__((packed)) idList;
+
+typedef struct removePortCommand {
+   long switchId;
+   long *portNums;
+} __attribute__ ((packed)) removePortCommand;
 
 void sendHelloResponse(int socketNum);
 void sendFeaturesRequest(int socketNum);
@@ -73,6 +88,10 @@ void addPortToListStats(long switchId, struct ofp_port_stats *stats);
 void addPortToListPort(long switchId, struct ofp_port p);
 void addSwitchToList(long switchId);
 void addSwitchConnection(long switchId, int portId, long connectedSwitchId);
+int checkInTree(treeConstruct *head, long fromSwitch, long toSwitch);
+treeConstruct *addToTree(treeConstruct *head, long fromSwitch, long toSwitch);
+idList *getListOfConnect(treeConstruct *head, long fromSwitch);
+void clearTree(treeConstruct *head);
 void stateUpdatePortFromSwitch(long switchId, long portNum, int state);
 void addPortHwAddr(long switchId, struct ofp_port p);
 void addPortHwAddrInfo(long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);
