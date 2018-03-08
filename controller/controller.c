@@ -76,6 +76,14 @@ void *startGraphThread(void *args) {
                   treeConstruct minDist = findMinHopLen(temp->switchId, switchIter->switchId, -1);
                   if (minDist.fromSwitch != -1) {
                      printf("MIN DIST FROM %ld -> %ld is port %ld for %ld\n", temp->switchId, switchIter->switchId, minDist.fromSwitch, minDist.toSwitch);
+                     portUp *portIter = switchIter->portList;
+                     while (portIter != NULL) {
+                        if (!portIter->isConnectToSwitch) {
+                           
+                           sendFlowModShortestUnicast(temp->socketNum, (void *)&minDist.fromSwitch, 1, portIter->hw_addr);
+                        }
+                        portIter = portIter->next;
+                     }
                   }
                }
 
@@ -708,6 +716,57 @@ void sendFlowModDeleteBroadcast(int socketNum, uint32_t *portNums, int numPorts)
    sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
 
+void sendFlowModShortestUnicast(int socketNum, uint32_t *portNums, int numPorts, uint8_t hw_addr[OFP_ETH_ALEN]) {
+   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output) + sizeof(struct ofp_instruction_goto_table)];
+   memset(buf, 0, sizeof(buf));
+
+   struct ofp_flow_mod *flow = (void *)buf;
+   flow->header.version = 0x4;
+   flow->header.type = OFPT_FLOW_MOD;
+   flow->header.length = htons(sizeof(buf));
+   flow->header.xid = 0;
+   flow->cookie = 0xf;
+   flow->priority = htons(OFP_DEFAULT_PRIORITY);
+   flow->table_id = 0;
+   flow->command = OFPFC_MODIFY;
+   flow->idle_timeout = ntohs(0);
+   flow->hard_timeout = ntohs(0);
+   flow->buffer_id = OFP_NO_BUFFER;
+   flow->out_port = htonl(OFPP_ANY);
+   flow->out_group = htonl(OFPG_ANY);
+   flow->flags = htons(OFPFF_SEND_FLOW_REM);
+
+   flow->match.type = ntohs(OFPMT_OXM);
+   flow->match.length = htons(sizeof(struct ofp_match) + OFP_ETH_ALEN);
+   uint16_t *temp2 = (void *) (buf + sizeof(struct ofp_flow_mod) - sizeof(struct ofp_match) + sizeof(uint32_t));
+   temp2[0]= htonl(OXM_OF_ETH_DST);
+   temp2[1] = htonl(OXM_OF_ETH_DST)>>16;
+   uint8_t *addr = (void *)&temp2[2];
+   for (int i = 0; i < OFP_ETH_ALEN; i++) {
+      addr[i] = hw_addr[i];
+   }
+
+   //flow->match.oxm_fields = OXM_OF_ETH_DST;
+   struct ofp_instruction_actions *instr = (void *)(buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod));
+   instr->type = ntohs(OFPIT_APPLY_ACTIONS);
+   instr->len = htons(sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output));
+   for (int i = 0; i < numPorts; i++) {
+      struct ofp_action_output *act = (void *) (buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + i *sizeof(struct ofp_action_output));
+      act->type = OFPAT_OUTPUT;
+      act->len= htons(sizeof(struct ofp_action_output));
+      act->port = htonl(portNums[i]);
+      act->max_len = OFPCML_MAX;
+   }
+
+   int loc = OFP_ETH_ALEN + 2 + sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output);
+   struct ofp_instruction_goto_table *instr2 = (void *) (buf + loc);
+   instr2->type = ntohs(OFPIT_GOTO_TABLE);
+   instr2->len = htons(sizeof(struct ofp_instruction_goto_table));
+   instr2->table_id = 1;
+
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
+}
+
 void sendFlowModDeleteAll(int socketNum) {
    unsigned char buf[sizeof(struct ofp_flow_mod)];
 
@@ -958,7 +1017,6 @@ treeConstruct *addToTree(treeConstruct *head, long fromSwitch, long toSwitch, lo
             portIter->hasBeenAdded = 1;
          }
       }
-      printf("HERE\n");
       //indicate reciprocal has been used
       switchUp *iter2 = globalSwitchList;
       while (iter2 != NULL && iter2->switchId != toSwitch) {

@@ -86,6 +86,7 @@ void sendFlowModAddDefaultController(int socketNum, uint8_t tableId);
 void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModAddSrcLearn(int socketNum, uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModDeleteBroadcast(int socketNum, uint32_t *portNums, int numPorts);
+void sendFlowModShortestUnicast(int socketNum, uint32_t *portNums, int numPorts, uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModDeleteAll(int socketNum);
 
 
