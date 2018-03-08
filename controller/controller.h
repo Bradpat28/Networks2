@@ -102,6 +102,7 @@ void stateUpdatePortFromSwitch(long switchId, long portNum, int state);
 void addPortHwAddr(long switchId, struct ofp_port p);
 void addPortHwAddrInfo(long switchId, int portNum, uint8_t hw_addr[OFP_ETH_ALEN]);
 void deletePortFromList(long switchId, long portNum);
+treeConstruct findMinHopLen(long fromSwitch, long toSwitch, long prevSwitch);
 void topologyUpdated();
 
 

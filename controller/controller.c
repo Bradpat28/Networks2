@@ -69,6 +69,22 @@ void *startGraphThread(void *args) {
       treeConstruct *head = NULL;
       switchUp *temp = globalSwitchList;
       while (temp != NULL) {
+         if (temp->numPorts >= 2) {
+            switchUp *switchIter = globalSwitchList;
+            while (switchIter != NULL) {
+               if (switchIter->switchId != temp->switchId) {
+                  treeConstruct minDist = findMinHopLen(temp->switchId, switchIter->switchId, -1);
+                  if (minDist.fromSwitch != -1) {
+                     printf("MIN DIST FROM %ld -> %ld is port %ld for %ld\n", temp->switchId, switchIter->switchId, minDist.fromSwitch, minDist.toSwitch);
+                  }
+               }
+
+               switchIter = switchIter->next;
+            }
+         }
+
+
+         //Spanning TREE
          portUp *ports = temp->portList;
          while (ports != NULL) {
             if (ports->isConnectToSwitch == 1 && ports->hasBeenAdded != 1) {
@@ -771,6 +787,107 @@ void addSwitchToList(long switchId, int socketNum) {
    newSwitch->socketNum = socketNum;
    globalSwitchList = newSwitch;
    pthread_mutex_unlock(&networkGraphMutex);
+}
+
+treeConstruct findMinHopLen(long fromSwitch, long toSwitch, long prevSwitch) {
+   treeConstruct *results = NULL;
+   switchUp *temp = globalSwitchList;
+   treeConstruct ret;
+   if (fromSwitch == toSwitch) {
+      ret.fromSwitch = fromSwitch;
+      ret.toSwitch = 1;
+      return ret;
+   }
+   while (temp != NULL && temp->switchId != fromSwitch) {
+      temp = temp->next;
+   }
+   if (temp != NULL) {
+      portUp *iter = temp->portList;
+      while (iter != NULL) {
+         if (iter->isConnectToSwitch) {
+            if (iter->connectedSwitchId != prevSwitch) {
+               treeConstruct *resIter = results;
+               if (resIter == NULL) {
+                  results = (treeConstruct *) calloc(sizeof(treeConstruct), 1);
+                  ret = findMinHopLen(iter->connectedSwitchId, toSwitch, fromSwitch);
+                  //printf("------\n");
+                  //printf("ret fromSwitch %ld toSwitch %ld prev %ld = %ld %ld\n", fromSwitch, toSwitch, prevSwitch, ret.fromSwitch, ret.toSwitch);
+
+                  if (ret.fromSwitch == -1) {
+                     results->fromSwitch = -1;
+                     results->toSwitch =50000;
+                  }
+                  else {
+                     results->fromSwitch = iter->portNum;
+                     results->toSwitch = 1 + ret.toSwitch;
+                  }
+                  results->next = NULL;
+               }
+               else {
+                  while (resIter->next != NULL) {
+                     resIter = resIter->next;
+                  }
+                  resIter->next = (treeConstruct *) calloc(sizeof(treeConstruct), 1);
+                  ret = findMinHopLen(iter->connectedSwitchId, toSwitch, fromSwitch);
+                  //printf("ret fromSwitch %ld toSwitch %ld prev %ld = %ld %ld\n", fromSwitch, toSwitch, prevSwitch, ret.fromSwitch, ret.toSwitch);
+
+                  if (ret.fromSwitch == -1) {
+                     resIter->next->fromSwitch = -1;
+                     resIter->next->toSwitch =50000;
+                  }
+                  else {
+                     resIter->next->fromSwitch = iter->portNum;
+                     resIter->next->toSwitch = 1 + ret.toSwitch;
+                  }
+                  resIter->next->next = NULL;
+               }
+
+            }
+            else {
+               treeConstruct *resIter = results;
+               if (resIter == NULL) {
+                  results = (treeConstruct *) calloc(sizeof(treeConstruct), 1);
+                  results->fromSwitch = iter->portNum;
+                  results->toSwitch = 50000;
+                  results->next = NULL;
+               }
+               else {
+                  while (resIter->next != NULL) {
+                     resIter = resIter->next;
+                  }
+                  resIter->next = (treeConstruct *) calloc(sizeof(treeConstruct), 1);
+                  resIter->next->fromSwitch = iter->portNum;
+                  resIter->next->toSwitch = 50000;
+                  resIter->next->next = NULL;
+
+               }
+            }
+
+         }
+         iter = iter->next;
+      }
+
+      int lowest = 500000;
+      long port = -1;
+      treeConstruct *resIter = results;
+
+      while (resIter != NULL) {
+         //printf("ret fromSwitch %ld toSwitch %ld prev %ld = %ld %ld (%ld %d)\n", fromSwitch, toSwitch, prevSwitch, resIter->fromSwitch, resIter->toSwitch, port, lowest);
+         if (resIter->toSwitch < lowest && resIter->toSwitch != -1) {
+            lowest = resIter->toSwitch;
+            port = resIter->fromSwitch;
+         }
+         results = resIter;
+         resIter = resIter->next;
+         free(results);
+      }
+      ret.fromSwitch = port;
+      ret.toSwitch = lowest;
+      return ret;
+   }
+   ret.fromSwitch = fromSwitch;
+   ret.toSwitch = -1;
+   return ret;
 }
 
 void addSwitchConnection(long switchId, int portId, long connectedSwitchId) {
