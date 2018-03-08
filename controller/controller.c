@@ -79,7 +79,7 @@ void *startGraphThread(void *args) {
                      portUp *portIter = switchIter->portList;
                      while (portIter != NULL) {
                         if (!portIter->isConnectToSwitch) {
-                           
+
                            sendFlowModShortestUnicast(temp->socketNum, (void *)&minDist.fromSwitch, 1, portIter->hw_addr);
                         }
                         portIter = portIter->next;
@@ -1092,6 +1092,14 @@ void stateUpdatePortFromSwitch(long switchId, long portNum, int state) {
          tempP = tempP->next;
       }
       if (tempP != NULL) {
+         if (state == PORT_STAT_DOWN || state == PORT_SUPPRESSED) {
+            if (tempP->isConnectToSwitch) {
+               tempP->isConnectToSwitch = 0;
+            }
+         }
+         else if (state == PORT_SENDING) {
+            sendProbePacket(temp->socketNum, temp->switchId, tempP->portNum, tempP->hw_addr);
+         }
          tempP->state = state;
       }
    }
