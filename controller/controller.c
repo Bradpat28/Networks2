@@ -65,6 +65,7 @@ void *startGraphThread(void *args) {
       printf("%s\n", "Waiting");
       pthread_cond_wait(&cond, &networkGraphMutex);
       printf("UPDATING GRAPH\n");
+      treeConstruct *broadcastChange = NULL;
       treeConstruct *head = NULL;
       switchUp *temp = globalSwitchList;
       while (temp != NULL) {
@@ -74,6 +75,11 @@ void *startGraphThread(void *args) {
                if (checkInTree(head, temp->switchId, ports->connectedSwitchId) ||
                      checkInTree(head, ports->connectedSwitchId,temp->switchId)) {
                   printf("\n\n\n\n\n---------------LOOP %ld -> %ld\n\n\n\n\n", temp->switchId, ports->connectedSwitchId);
+                  treeConstruct *fix = (treeConstruct *) calloc(sizeof(treeConstruct), 1);
+                  fix->fromSwitch = temp->switchId;
+                  fix->toSwitch = ports->portNum;
+                  fix->next = broadcastChange;
+                  broadcastChange = fix;
                }
                else {
                   head = addToTree(head, temp->switchId, ports->connectedSwitchId, ports->portNum);
@@ -90,6 +96,34 @@ void *startGraphThread(void *args) {
          temp2 = temp2->next;
       }
       printf("-------------------------\n");
+
+      treeConstruct *broadcastIter = broadcastChange;
+
+      while (broadcastIter != NULL) {
+         //find switch
+         temp = globalSwitchList;
+         while (temp != NULL && temp->switchId != broadcastIter->fromSwitch) {
+            temp = temp->next;
+         }
+         if (temp != NULL) {
+            uint32_t *ports = (uint32_t *) calloc(sizeof(uint32_t), temp->numPorts);
+            int count = 0;
+            portUp *portIter = temp->portList;
+            while (portIter != NULL) {
+               if (portIter->portNum != broadcastIter->toSwitch) {
+                  ports[count] = portIter->portNum;
+                  count++;
+               }
+               portIter = portIter->next;
+            }
+
+            sendFlowModDeleteBroadcast(temp->socketNum, ports, count);
+            free(ports);
+         }
+         broadcastIter = broadcastIter->next;
+      }
+
+
       clearTree(head);
       pthread_mutex_unlock(&networkGraphMutex);
       printSwitchList();
@@ -190,7 +224,7 @@ void *startConnection(void *socket_info) {
             struct ofp_switch_features *features = (struct ofp_switch_features *) packet;
             switchId = ntohl(features->datapath_id>> 32);
             printf("Switch ID = %lx\n", switchId);
-            addSwitchToList(switchId);
+            addSwitchToList(switchId, clientSocketNum);
          }
          else if (getTypeFromPacket(packet) == OFPT_PORT_STATUS) {
             printOFPacket(packet);
@@ -607,6 +641,57 @@ void sendFlowModAddSrcLearn(int socketNum, uint8_t hw_addr[OFP_ETH_ALEN]) {
    sendPacketToSocket(socketNum, buf, sizeof(buf));
 }
 
+void sendFlowModDeleteBroadcast(int socketNum, uint32_t *portNums, int numPorts) {
+   unsigned char buf[sizeof(struct ofp_flow_mod) + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output) + sizeof(struct ofp_instruction_goto_table)];
+   memset(buf, 0, sizeof(buf));
+
+   struct ofp_flow_mod *flow = (void *)buf;
+   flow->header.version = 0x4;
+   flow->header.type = OFPT_FLOW_MOD;
+   flow->header.length = htons(sizeof(buf));
+   flow->header.xid = 0;
+   flow->cookie = 0xf;
+   flow->priority = htons(OFP_DEFAULT_PRIORITY);
+   flow->table_id = 0;
+   flow->command = OFPFC_MODIFY;
+   flow->idle_timeout = ntohs(0);
+   flow->hard_timeout = ntohs(0);
+   flow->buffer_id = OFP_NO_BUFFER;
+   flow->out_port = htonl(OFPP_ANY);
+   flow->out_group = htonl(OFPG_ANY);
+   flow->flags = htons(OFPFF_SEND_FLOW_REM);
+
+   flow->match.type = ntohs(OFPMT_OXM);
+   flow->match.length = htons(sizeof(struct ofp_match) + OFP_ETH_ALEN);
+   uint16_t *temp2 = (void *) (buf + sizeof(struct ofp_flow_mod) - sizeof(struct ofp_match) + sizeof(uint32_t));
+   temp2[0]= htonl(OXM_OF_ETH_DST);
+   temp2[1] = htonl(OXM_OF_ETH_DST)>>16;
+   uint8_t *addr = (void *)&temp2[2];
+   for (int i = 0; i < OFP_ETH_ALEN; i++) {
+      addr[i] = 0xff;
+   }
+
+   //flow->match.oxm_fields = OXM_OF_ETH_DST;
+   struct ofp_instruction_actions *instr = (void *)(buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod));
+   instr->type = ntohs(OFPIT_APPLY_ACTIONS);
+   instr->len = htons(sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output));
+   for (int i = 0; i < numPorts; i++) {
+      struct ofp_action_output *act = (void *) (buf + OFP_ETH_ALEN  + 2+ sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + i *sizeof(struct ofp_action_output));
+      act->type = OFPAT_OUTPUT;
+      act->len= htons(sizeof(struct ofp_action_output));
+      act->port = htonl(portNums[i]);
+      act->max_len = OFPCML_MAX;
+   }
+
+   int loc = OFP_ETH_ALEN + 2 + sizeof(struct ofp_flow_mod) + sizeof(struct ofp_instruction_actions) + numPorts * sizeof(struct ofp_action_output);
+   struct ofp_instruction_goto_table *instr2 = (void *) (buf + loc);
+   instr2->type = ntohs(OFPIT_GOTO_TABLE);
+   instr2->len = htons(sizeof(struct ofp_instruction_goto_table));
+   instr2->table_id = 1;
+
+   sendPacketToSocket(socketNum, buf, sizeof(buf));
+}
+
 void sendFlowModDeleteAll(int socketNum) {
    unsigned char buf[sizeof(struct ofp_flow_mod)];
 
@@ -649,6 +734,7 @@ void addPortToListStats(long switchId, struct ofp_port_stats *stats) {
       newPort->connectedSwitchId = -1;
       newPort->hasBeenAdded = 0;
       temp->portList = newPort;
+      temp->numPorts++;
       memset(newPort->hw_addr, 0, OFP_ETH_ALEN);
    }
    pthread_mutex_unlock(&networkGraphMutex);
@@ -669,17 +755,20 @@ void addPortToListPort(long switchId, struct ofp_port p) {
       newPort->connectedSwitchId = -1;
       newPort->hasBeenAdded = 0;
       temp->portList = newPort;
+      temp->numPorts++;
       memset(newPort->hw_addr, 0, OFP_ETH_ALEN);
    }
    pthread_mutex_unlock(&networkGraphMutex);
 }
 
-void addSwitchToList(long switchId) {
+void addSwitchToList(long switchId, int socketNum) {
    pthread_mutex_lock(&networkGraphMutex);
    switchUp *newSwitch = (switchUp *) calloc(sizeof(switchUp), 1);
    newSwitch->next = globalSwitchList;
    newSwitch->portList = NULL;
    newSwitch->switchId = switchId;
+   newSwitch->numPorts = 0;
+   newSwitch->socketNum = socketNum;
    globalSwitchList = newSwitch;
    pthread_mutex_unlock(&networkGraphMutex);
 }
@@ -710,6 +799,23 @@ int checkInTree(treeConstruct *head, long fromSwitch, long toSwitch) {
          if (temp->toSwitch == toSwitch) {
             return 1;
          }
+      }
+      temp = temp->next;
+   }
+
+   if (inTree(head, fromSwitch) == 1 && inTree(head, toSwitch)) {
+      return 1;
+   }
+
+
+   return 0;
+}
+
+int inTree(treeConstruct *head, long id) {
+   treeConstruct *temp = head;
+   while (temp != NULL) {
+      if (temp->fromSwitch == id || temp->toSwitch == id) {
+         return 1;
       }
       temp = temp->next;
    }
@@ -864,6 +970,7 @@ void deletePortFromList(long switchId, long portNum) {
       temp = temp->next;
    }
    if (temp != NULL) {
+      temp->numPorts--;
       portUp *tempP = temp->portList;
       portUp *prev = NULL;
       while (tempP != NULL && tempP->portNum != ntohl(portNum)) {

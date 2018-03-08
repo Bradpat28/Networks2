@@ -39,7 +39,9 @@ typedef struct portUp {
 }__attribute__((packed)) portUp;
 
 typedef struct switchUp {
+   int socketNum;
    portUp *portList;
+   int numPorts;
    long switchId;
    struct switchUp* next;
 } __attribute__((packed)) switchUp;
@@ -83,12 +85,16 @@ void sendFlowModAdd(int socketNum, int portNum,  uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModAddDefaultController(int socketNum, uint8_t tableId);
 void sendFlowModAddPorts(int socketNum, uint32_t *portNums, int numPorts, uint8_t hw_addr[OFP_ETH_ALEN]);
 void sendFlowModAddSrcLearn(int socketNum, uint8_t hw_addr[OFP_ETH_ALEN]);
+void sendFlowModDeleteBroadcast(int socketNum, uint32_t *portNums, int numPorts);
 void sendFlowModDeleteAll(int socketNum);
+
+
 void addPortToListStats(long switchId, struct ofp_port_stats *stats);
 void addPortToListPort(long switchId, struct ofp_port p);
-void addSwitchToList(long switchId);
+void addSwitchToList(long switchId, int socketNum);
 void addSwitchConnection(long switchId, int portId, long connectedSwitchId);
 int checkInTree(treeConstruct *head, long fromSwitch, long toSwitch);
+int inTree(treeConstruct *head, long id);
 treeConstruct *addToTree(treeConstruct *head, long fromSwitch, long toSwitch, long portNum);
 idList *getListOfConnect(treeConstruct *head, long fromSwitch);
 void clearTree(treeConstruct *head);
