@@ -78,7 +78,7 @@ void *startGraphThread(void *args) {
                      printf("MIN DIST FROM %ld -> %ld is port %ld for %ld\n", temp->switchId, switchIter->switchId, minDist.fromSwitch, minDist.toSwitch);
                      portUp *portIter = switchIter->portList;
                      while (portIter != NULL) {
-                        if (!portIter->isConnectToSwitch) {
+                        if (!portIter->isConnectToSwitch && portIter->state == PORT_SENDING) {
 
                            sendFlowModShortestUnicast(temp->socketNum, (void *)&minDist.fromSwitch, 1, portIter->hw_addr);
                         }
